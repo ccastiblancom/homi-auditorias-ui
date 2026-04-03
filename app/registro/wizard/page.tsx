@@ -3,13 +3,12 @@ import { useState, useEffect, Suspense, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ArrowRight, ArrowLeft, ClipboardList, Info, Calendar, Activity } from 'lucide-react';
 
-// Importamos la data de los TODOS los flujos
+// Importamos la data de TODOS los flujos
 import { flujoUrgencias } from '@/data/preguntas-urgencias';
 import { flujoHospitalizacion } from '@/data/preguntas-hospitalizacion';
 import { flujoCirugia } from '@/data/preguntas-cirugia';
 import { flujoConsulta } from '@/data/preguntas-consulta';
 
-// Componente principal envuelto en Suspense para Next.js App Router
 export default function WizardPage() {
   return (
     <Suspense fallback={<div className="p-10 text-center font-bold text-blue-900">Cargando auditoría...</div>}>
@@ -33,18 +32,15 @@ function FormularioAuditoria() {
     consulta: flujoConsulta
   };
 
-  // Si no encuentra el flujo, carga Urgencias por defecto
   const flujoActivo = (flujoId && flujosData[flujoId]) ? flujosData[flujoId] : flujoUrgencias;
 
   const [puntoActual, setPuntoActual] = useState(0);
   const [preguntaActual, setPreguntaActual] = useState(0);
   const [fechaBogota, setFechaBogota] = useState('');
 
-  // Referencias a los datos actuales
   const punto = flujoActivo.puntosControl[puntoActual];
   const preguntaData = punto.preguntas[preguntaActual];
 
-  // Cálculo para la barra de progreso
   const progreso = ((preguntaActual + 1) / punto.preguntas.length) * 100;
 
   useEffect(() => {
@@ -64,7 +60,6 @@ function FormularioAuditoria() {
     } else {
       alert("¡Auditoría Finalizada! Los datos se enviarán a la base de datos.");
     }
-    // Viaje suave hacia el ancla superior
     topRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
@@ -75,14 +70,13 @@ function FormularioAuditoria() {
       setPuntoActual(puntoActual - 1);
       setPreguntaActual(flujoActivo.puntosControl[puntoActual - 1].preguntas.length - 1);
     }
-    // Viaje suave hacia el ancla superior
     topRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   return (
     <div className="min-h-screen bg-slate-50 py-12 px-4 sm:px-6 lg:px-8 font-sans flex flex-col items-center relative">
       
-      {/* ANCLA INVISIBLE: Aquí es donde viaja la pantalla al cambiar de pregunta */}
+      {/* ANCLA INVISIBLE PARA EL SCROLL */}
       <div ref={topRef} className="absolute top-0 h-4 w-full"></div>
 
       {/* Contenedor Principal */}
@@ -128,7 +122,6 @@ function FormularioAuditoria() {
               {preguntaData.pregunta}
             </h3>
             
-            {/* Caja de Ayuda */}
             <div className="bg-slate-50 rounded-xl p-5 border border-slate-200 flex items-start space-x-4">
               <Info className="text-blue-500 flex-shrink-0 mt-1" size={24} />
               <div className="space-y-3 text-sm text-slate-700">
@@ -140,7 +133,7 @@ function FormularioAuditoria() {
 
           <hr className="border-slate-100 mb-10" />
 
-          {/* Campos de Entrada */}
+          {/* --- CAMPOS DE ENTRADA CORREGIDOS CON TEXTO OSCURO --- */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             
             <div className="md:col-span-2">
@@ -148,7 +141,7 @@ function FormularioAuditoria() {
               <input 
                 type="number" 
                 placeholder="Solo números"
-                className="w-full px-4 py-3 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors outline-none"
+                className="w-full px-4 py-3 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors outline-none text-slate-900 placeholder-slate-400"
                 onKeyDown={(e) => {
                   if (!/[0-9]/.test(e.key) && e.key !== 'Backspace' && e.key !== 'Tab') e.preventDefault();
                 }}
@@ -160,7 +153,7 @@ function FormularioAuditoria() {
               <textarea 
                 rows={3}
                 placeholder="Escriba aquí sus observaciones..."
-                className="w-full px-4 py-3 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors outline-none resize-none"
+                className="w-full px-4 py-3 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors outline-none resize-none text-slate-900 placeholder-slate-400"
               ></textarea>
             </div>
 
@@ -169,7 +162,7 @@ function FormularioAuditoria() {
               <input 
                 type="text" 
                 placeholder="Nombre o cargo"
-                className="w-full px-4 py-3 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors outline-none"
+                className="w-full px-4 py-3 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors outline-none text-slate-900 placeholder-slate-400"
               />
             </div>
 
@@ -178,7 +171,7 @@ function FormularioAuditoria() {
               <input 
                 type="text" 
                 placeholder="Número de registro o documento"
-                className="w-full px-4 py-3 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors outline-none"
+                className="w-full px-4 py-3 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors outline-none text-slate-900 placeholder-slate-400"
               />
             </div>
 
@@ -186,11 +179,11 @@ function FormularioAuditoria() {
               <label className="block text-sm font-semibold text-slate-700 mb-2">Clasificación del hallazgo</label>
               <select 
                 defaultValue=""
-                className="w-full px-4 py-3 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors outline-none cursor-pointer appearance-none"
+                className="w-full px-4 py-3 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors outline-none cursor-pointer appearance-none text-slate-900"
               >
-                <option value="" disabled>Seleccione una clasificación...</option>
-                <option value="Conformidad">✅ Conformidad (Cumple)</option>
-                <option value="No conformidad">❌ No conformidad (No cumple)</option>
+                <option value="" disabled className="text-slate-900">Seleccione una clasificación...</option>
+                <option value="Conformidad" className="text-slate-900">✅ Conformidad (Cumple)</option>
+                <option value="No conformidad" className="text-slate-900">❌ No conformidad (No cumple)</option>
               </select>
             </div>
 
