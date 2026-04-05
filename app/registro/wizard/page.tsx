@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, Suspense, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { ArrowRight, ArrowLeft, ClipboardList, Info, Calendar, Activity } from 'lucide-react';
+import { ArrowRight, ArrowLeft, ClipboardList, Info, Calendar, Activity, Lock } from 'lucide-react';
 
 // Importamos la data de los flujos
 import { flujoUrgencias } from '@/data/preguntas-urgencias';
@@ -42,6 +42,9 @@ function FormularioAuditoria() {
   const [evidencia, setEvidencia] = useState('');
   const [clasificacion, setClasificacion] = useState('');
 
+  // Lógica para saber si es la primera pregunta absoluta de la auditoría
+  const esPrimeraPreguntaAbsoluta = puntoActual === 0 && preguntaActual === 0;
+
   const punto = flujoActivo.puntosControl[puntoActual];
   const preguntaData = punto.preguntas[preguntaActual];
   const progreso = ((preguntaActual + 1) / punto.preguntas.length) * 100;
@@ -55,6 +58,12 @@ function FormularioAuditoria() {
   }, []);
 
   const handleSiguiente = () => {
+    // Validación: Si es la primera pregunta y no han puesto ID, avisar (opcional)
+    if (esPrimeraPreguntaAbsoluta && !pacienteId) {
+      alert("Por favor, ingrese la identificación del paciente para continuar.");
+      return;
+    }
+
     if (preguntaActual < punto.preguntas.length - 1) {
       setPreguntaActual(preguntaActual + 1);
     } else if (puntoActual < flujoActivo.puntosControl.length - 1) {
@@ -64,7 +73,7 @@ function FormularioAuditoria() {
       alert("¡Auditoría Finalizada!");
     }
 
-    // LIMPIEZA DE CAMPOS (Menos Paciente ID)
+    // LIMPIEZA DE CAMPOS (Solo los de la respuesta, NO el pacienteId)
     setHallazgo('');
     setResponsable('');
     setEvidencia('');
@@ -88,6 +97,8 @@ function FormularioAuditoria() {
       <div ref={topRef} className="absolute top-0 h-4 w-full"></div>
 
       <div className="w-full max-w-4xl bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden transition-all mt-4">
+        
+        {/* Cabecera */}
         <div className="bg-slate-900 px-8 py-6 text-white flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div className="flex items-center space-x-3">
             <div className="p-2 bg-slate-800 rounded-lg">
@@ -104,17 +115,26 @@ function FormularioAuditoria() {
           </div>
         </div>
 
+        {/* Barra de Progreso */}
         <div className="w-full bg-slate-100 h-1.5">
-          <div className="bg-blue-600 h-1.5 transition-all duration-500 ease-in-out" style={{ width: `${progreso}%` }}></div>
+          <div 
+            className="bg-blue-600 h-1.5 transition-all duration-500 ease-in-out" 
+            style={{ width: `${progreso}%` }}
+          ></div>
         </div>
 
+        {/* Cuerpo del Formulario */}
         <div className="p-8 sm:p-10">
           <div className="inline-flex items-center px-4 py-2 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700 text-sm font-bold mb-8">
-            <ClipboardList className="w-4 h-4 mr-2" /> {punto.nombre}
+            <ClipboardList className="w-4 h-4 mr-2" />
+            {punto.nombre}
           </div>
 
           <div className="mb-10">
-            <h3 className="text-3xl font-extrabold text-slate-900 leading-tight mb-6">{preguntaData.pregunta}</h3>
+            <h3 className="text-3xl font-extrabold text-slate-900 leading-tight mb-6">
+              {preguntaData.pregunta}
+            </h3>
+            
             <div className="bg-slate-50 rounded-xl p-5 border border-slate-200 flex items-start space-x-4">
               <Info className="text-blue-500 flex-shrink-0 mt-1" size={24} />
               <div className="space-y-3 text-sm text-slate-700">
@@ -126,15 +146,30 @@ function FormularioAuditoria() {
 
           <hr className="border-slate-100 mb-10" />
 
+          {/* CAMPOS DE ENTRADA */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            
+            {/* CAMPO: IDENTIFICACIÓN (Lógica de Deshabilitado) */}
             <div className="md:col-span-2">
-              <label className="block text-sm font-semibold text-slate-700 mb-2">Identificación del paciente</label>
+              <label className="flex items-center text-sm font-semibold text-slate-700 mb-2">
+                Identificación del paciente
+                {!esPrimeraPreguntaAbsoluta && (
+                  <span className="ml-2 flex items-center text-xs font-normal text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
+                    <Lock size={12} className="mr-1" /> Bloqueado para esta auditoría
+                  </span>
+                )}
+              </label>
               <input 
                 type="number" 
                 value={pacienteId}
                 onChange={(e) => setPacienteId(e.target.value)}
-                placeholder="Solo números"
-                className="w-full px-4 py-3 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none text-slate-900"
+                disabled={!esPrimeraPreguntaAbsoluta} // SE DESHABILITA SI NO ES LA PRIMERA
+                placeholder="Ingrese número de documento"
+                className={`w-full px-4 py-3 rounded-xl border outline-none transition-all ${
+                  esPrimeraPreguntaAbsoluta 
+                    ? "border-slate-300 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 text-slate-900" 
+                    : "border-slate-200 bg-slate-100 text-slate-500 cursor-not-allowed font-medium"
+                }`}
               />
             </div>
 
@@ -145,7 +180,7 @@ function FormularioAuditoria() {
                 value={hallazgo}
                 onChange={(e) => setHallazgo(e.target.value)}
                 placeholder="Escriba aquí sus observaciones..."
-                className="w-full px-4 py-3 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none text-slate-900"
+                className="w-full px-4 py-3 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 transition-colors outline-none text-slate-900"
               ></textarea>
             </div>
 
@@ -161,24 +196,24 @@ function FormularioAuditoria() {
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">Evidencia del hallazgo</label>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">Evidencia (Registro/Documento)</label>
               <input 
                 type="text" 
                 value={evidencia}
                 onChange={(e) => setEvidencia(e.target.value)}
-                placeholder="Número de registro"
+                placeholder="Número de soporte"
                 className="w-full px-4 py-3 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none text-slate-900"
               />
             </div>
 
             <div className="md:col-span-2">
-              <label className="block text-sm font-semibold text-slate-700 mb-2">Clasificación</label>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">Clasificación del hallazgo</label>
               <select 
                 value={clasificacion}
                 onChange={(e) => setClasificacion(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none text-slate-900"
+                className="w-full px-4 py-3 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none text-slate-900 cursor-pointer"
               >
-                <option value="">Seleccione...</option>
+                <option value="">Seleccione una clasificación...</option>
                 <option value="Conformidad">✅ Conformidad (Cumple)</option>
                 <option value="No conformidad">❌ No conformidad (No cumple)</option>
               </select>
@@ -186,14 +221,30 @@ function FormularioAuditoria() {
           </div>
         </div>
 
+        {/* Controles Inferiores */}
         <div className="bg-slate-50 px-8 py-5 border-t border-slate-200 flex justify-between items-center">
-          <button onClick={handleAnterior} disabled={puntoActual === 0 && preguntaActual === 0} className="text-slate-600 font-bold disabled:opacity-30">
-            <ArrowLeft size={18} className="inline mr-2" /> Anterior
+          <button 
+            onClick={handleAnterior}
+            disabled={esPrimeraPreguntaAbsoluta}
+            className={`flex items-center space-x-2 px-5 py-2.5 rounded-lg font-semibold transition-all ${
+              esPrimeraPreguntaAbsoluta 
+                ? 'text-slate-400 bg-slate-100 cursor-not-allowed' 
+                : 'text-slate-700 hover:bg-slate-200 hover:text-slate-900'
+            }`}
+          >
+            <ArrowLeft size={18} />
+            <span>Anterior</span>
           </button>
-          <button onClick={handleSiguiente} className="bg-blue-600 text-white px-8 py-2 rounded-lg font-bold hover:bg-blue-700">
-            Siguiente <ArrowRight size={18} className="inline ml-2" />
+
+          <button 
+            onClick={handleSiguiente}
+            className="flex items-center space-x-2 px-6 py-2.5 rounded-lg font-semibold text-white bg-blue-600 hover:bg-blue-700 hover:shadow-md transition-all active:scale-95"
+          >
+            <span>{preguntaActual === punto.preguntas.length - 1 && puntoActual === flujoActivo.puntosControl.length - 1 ? 'Finalizar' : 'Siguiente'}</span>
+            <ArrowRight size={18} />
           </button>
         </div>
+
       </div>
     </div>
   );
