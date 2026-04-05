@@ -74,6 +74,8 @@ export default function TorreControlPage() {
               <tr className="bg-slate-50 text-slate-500 text-xs font-bold uppercase tracking-widest border-b border-slate-200">
                 <th className="px-6 py-4">Auditoría</th>
                 <th className="px-6 py-4">Paciente</th>
+                {/* COLUMNA RESTAURADA */}
+                <th className="px-6 py-4">Flujo</th> 
                 <th className="px-6 py-4 text-center">Hallazgos</th>
                 <th className="px-6 py-4">Estado</th>
                 <th className="px-6 py-4 text-center">Acciones</th>
@@ -84,6 +86,8 @@ export default function TorreControlPage() {
                 <tr key={item.id} className="hover:bg-blue-50/30 transition-colors">
                   <td className="px-6 py-4 font-bold text-slate-900">{item.id}</td>
                   <td className="px-6 py-4 text-slate-700 font-medium">{item.paciente}</td>
+                  {/* DATO RESTAURADO */}
+                  <td className="px-6 py-4 text-slate-600 font-medium">{item.flujo}</td>
                   <td className="px-6 py-4 text-center">
                     <span className={`px-2 py-1 rounded-md text-xs font-black ${item.hallazgos > 0 ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-500'}`}>
                       {item.hallazgos}
@@ -139,7 +143,7 @@ export default function TorreControlPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl h-[80vh] flex flex-col overflow-hidden">
             <div className="bg-slate-900 p-6 text-white flex justify-between items-center">
-              <div><h3 className="text-xl font-bold">Respuestas de Auditoría</h3><p className="text-slate-400 text-sm">ID: {auditoriaActiva.id}</p></div>
+              <div><h3 className="text-xl font-bold">Respuestas de Auditoría</h3><p className="text-slate-400 text-sm">ID: {auditoriaActiva.id} • Flujo: {auditoriaActiva.flujo}</p></div>
               <button onClick={() => setModalDetalle(false)} className="text-slate-400 hover:text-white"><X size={24} /></button>
             </div>
             <div className="flex flex-1 overflow-hidden">
