@@ -8,192 +8,181 @@ import {
   Edit2, 
   Trash2, 
   CheckCircle2, 
-  Lock 
+  Lock,
+  UserPlus,
+  Mail,
+  Briefcase,
+  X
 } from 'lucide-react';
 
-// --- DATOS DE PRUEBA (MOCKS) ---
-const mockUsuarios = [
-  { id: 1, nombre: 'Cristian Castiblanco', email: 'ccastiblanco@homi.org.co', rol: 'Ingeniero', estado: 'Activo' },
-  { id: 2, nombre: 'Admin HOMI', email: 'admin@homi.org.co', rol: 'Administrador', estado: 'Activo' },
-  { id: 3, nombre: 'Dra. Ana Martínez', email: 'amartinez@homi.org.co', rol: 'Coordinador', estado: 'Activo' },
-  { id: 4, nombre: 'Carlos Ruiz', email: 'cruiz@homi.org.co', rol: 'Auditor Concurrente', estado: 'Inactivo' },
-];
-
-const rolesInfo = [
-  { 
-    rol: 'Administrador', 
-    descripcion: 'Acceso total al sistema y configuraciones.',
-    permisos: ['Registro auditoría', 'Torre de control', 'Informe Auditoría', 'Configuración'],
-    color: 'bg-indigo-100 text-indigo-800 border-indigo-200'
-  },
-  { 
-    rol: 'Coordinador', 
-    descripcion: 'Supervisión de auditorías y planes de acción.',
-    permisos: ['Registro auditoría', 'Torre de control', 'Informe Auditoría'],
-    color: 'bg-blue-100 text-blue-800 border-blue-200'
-  },
-  { 
-    rol: 'Ingeniero', 
-    descripcion: 'Análisis de procesos y mejora continua.',
-    permisos: ['Registro auditoría', 'Torre de control', 'Informe Auditoría'],
-    color: 'bg-emerald-100 text-emerald-800 border-emerald-200'
-  },
-  { 
-    rol: 'Auditor Concurrente', 
-    descripcion: 'Ejecución de auditorías en campo.',
-    permisos: ['Registro auditoría', 'Torre de control', 'Informe Auditoría'],
-    color: 'bg-amber-100 text-amber-800 border-amber-200'
-  },
+// --- DATOS DE PRUEBA INICIALES ---
+const inicialUsuarios = [
+  { id: 1, nombre: 'Cristian Castiblanco', email: 'ccastiblanco@homi.org.co', rol: 'Administrador', estado: 'Activo' },
+  { id: 2, nombre: 'Dra. Ana Martínez', email: 'amartinez@homi.org.co', rol: 'Coordinador', estado: 'Activo' },
+  { id: 3, nombre: 'Carlos Ruiz', email: 'cruiz@homi.org.co', rol: 'Auditor Concurrente', estado: 'Inactivo' },
 ];
 
 export default function ConfiguracionPage() {
+  const [usuarios, setUsuarios] = useState(inicialUsuarios);
   const [mostrarModal, setMostrarModal] = useState(false);
+  const [nuevoUsuario, setNuevoUsuario] = useState({ nombre: '', email: '', rol: '', estado: 'Activo' });
+
+  const handleCrearUsuario = () => {
+    if (!nuevoUsuario.nombre || !nuevoUsuario.email || !nuevoUsuario.rol) return;
+    const user = { ...nuevoUsuario, id: usuarios.length + 1 };
+    setUsuarios([...usuarios, user]);
+    setMostrarModal(false);
+    setNuevoUsuario({ nombre: '', email: '', rol: '', estado: 'Activo' });
+  };
+
+  const eliminarUsuario = (id: number) => {
+    setUsuarios(usuarios.filter(u => u.id !== id));
+  };
 
   return (
-    <div className="min-h-screen bg-slate-50 p-8 lg:p-12 font-sans">
-      <div className="max-w-7xl mx-auto">
+    <div className="p-8 lg:p-12 max-w-7xl mx-auto font-sans">
+      
+      <div className="mb-10">
+        <h2 className="text-3xl font-extrabold text-slate-900 flex items-center">
+          <Settings className="mr-3 text-blue-600" size={32} />
+          Configuración de Accesos
+        </h2>
+        <p className="text-slate-600 mt-2">Administre los usuarios y permisos del sistema hospitalario.</p>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
         
-        {/* Encabezado */}
-        <div className="mb-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <div>
-            <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight flex items-center">
-              <Settings className="mr-3 text-slate-700" size={32} />
-              Configuración del Sistema
-            </h2>
-            <p className="mt-2 text-lg text-slate-600 font-medium">Gestión de usuarios, roles y permisos de acceso a módulos.</p>
+        {/* Directorio de Usuarios */}
+        <div className="xl:col-span-2">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+              <h3 className="font-bold text-slate-800 flex items-center">
+                <Users className="mr-2 text-blue-500" size={20} />
+                Usuarios con Acceso
+              </h3>
+              <button 
+                onClick={() => setMostrarModal(true)}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center transition-all"
+              >
+                <Plus size={18} className="mr-1" /> Nuevo Usuario
+              </button>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="text-slate-400 text-xs font-bold uppercase tracking-widest border-b border-slate-100">
+                    <th className="px-6 py-4">Usuario</th>
+                    <th className="px-6 py-4">Rol</th>
+                    <th className="px-6 py-4">Estado</th>
+                    <th className="px-6 py-4 text-right">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {usuarios.map((u) => (
+                    <tr key={u.id} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="px-6 py-4">
+                        <p className="font-bold text-slate-800">{u.nombre}</p>
+                        <p className="text-xs text-slate-400">{u.email}</p>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 text-xs font-bold border border-blue-100">
+                          {u.rol}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${u.estado === 'Activo' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                          {u.estado}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-right space-x-2">
+                        <button className="p-2 text-slate-400 hover:text-blue-600 transition-colors"><Edit2 size={16} /></button>
+                        <button onClick={() => eliminarUsuario(u.id)} className="p-2 text-slate-400 hover:text-rose-600 transition-colors"><Trash2 size={16} /></button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-          
-          {/* COLUMNA IZQUIERDA: Tarjetas de Roles */}
-          <div className="xl:col-span-1 space-y-6">
-            <h3 className="text-xl font-bold text-slate-900 flex items-center mb-4">
-              <Shield className="mr-2 text-blue-600" size={24} />
-              Niveles de Acceso (Roles)
+        {/* Roles y Permisos (Informativo) */}
+        <div className="space-y-6">
+          <div className="bg-slate-900 rounded-2xl p-6 text-white shadow-lg">
+            <h3 className="font-bold flex items-center mb-4">
+              <Shield className="mr-2 text-blue-400" size={20} /> Permisos por Rol
             </h3>
-            
-            {rolesInfo.map((rol, index) => (
-              <div key={index} className={`bg-white rounded-2xl border p-5 shadow-sm ${rol.color.replace('bg-', 'hover:bg-opacity-50 hover:bg-').split(' ')[0]} transition-all`}>
-                <div className="flex justify-between items-start mb-2">
-                  <h4 className="text-lg font-bold text-slate-900">{rol.rol}</h4>
-                  <Lock size={16} className="text-slate-400" />
-                </div>
-                <p className="text-sm text-slate-600 mb-4">{rol.descripcion}</p>
-                <div>
-                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Módulos permitidos:</p>
-                  <div className="flex flex-wrap gap-2">
-                    {rol.permisos.map((permiso, i) => (
-                      <span key={i} className={`inline-flex items-center px-2 py-1 rounded-md text-xs font-semibold border ${rol.color}`}>
-                        <CheckCircle2 size={12} className="mr-1" />
-                        {permiso}
-                      </span>
-                    ))}
-                  </div>
-                </div>
+            <div className="space-y-4 text-sm">
+              <div className="border-l-2 border-blue-500 pl-4">
+                <p className="font-bold text-blue-400">Administrador</p>
+                <p className="text-slate-400 text-xs">Acceso total, gestión de usuarios y borrado de registros.</p>
               </div>
-            ))}
-          </div>
-
-          {/* COLUMNA DERECHA: Tabla de Usuarios */}
-          <div className="xl:col-span-2">
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-full">
-              
-              <div className="px-6 py-5 border-b border-slate-200 flex justify-between items-center bg-slate-50/50">
-                <h3 className="text-lg font-bold text-slate-900 flex items-center">
-                  <Users className="mr-2 text-blue-600" size={20} />
-                  Directorio de Usuarios
-                </h3>
-                <button 
-                  onClick={() => setMostrarModal(true)}
-                  className="flex items-center space-x-2 bg-blue-800 hover:bg-blue-900 text-white px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-sm"
-                >
-                  <Plus size={16} />
-                  <span>Nuevo Usuario</span>
-                </button>
-              </div>
-
-              <div className="overflow-x-auto flex-1">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 text-sm font-semibold uppercase tracking-wider">
-                      <th className="px-6 py-4">Usuario</th>
-                      <th className="px-6 py-4">Rol Asignado</th>
-                      <th className="px-6 py-4 text-center">Estado</th>
-                      <th className="px-6 py-4 text-right">Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {mockUsuarios.map((user) => (
-                      <tr key={user.id} className="hover:bg-slate-50/50 transition-colors">
-                        <td className="px-6 py-4">
-                          <p className="text-sm font-bold text-slate-900">{user.nombre}</p>
-                          <p className="text-xs text-slate-500">{user.email}</p>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold bg-slate-100 text-slate-700 border border-slate-200">
-                            {user.rol}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-center">
-                          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold ${user.estado === 'Activo' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-                            {user.estado}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          <div className="flex justify-end space-x-2">
-                            <button className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Editar">
-                              <Edit2 size={16} />
-                            </button>
-                            <button className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors" title="Desactivar">
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="border-l-2 border-slate-600 pl-4 opacity-70">
+                <p className="font-bold text-white">Auditor / Coordinador</p>
+                <p className="text-slate-400 text-xs">Registro de auditorías, gestión de hallazgos y visualización de informes.</p>
               </div>
             </div>
           </div>
-
         </div>
       </div>
 
-      {/* --- MODAL CREAR USUARIO --- */}
+      {/* MODAL CREAR USUARIO */}
       {mostrarModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            <div className="bg-slate-900 px-6 py-4 flex justify-between items-center text-white">
-              <h3 className="text-lg font-bold">Registrar Nuevo Usuario</h3>
-              <button onClick={() => setMostrarModal(false)} className="text-slate-400 hover:text-white transition-colors">
-                ✕
-              </button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="bg-slate-900 p-6 flex justify-between items-center text-white">
+              <h3 className="text-lg font-bold flex items-center"><UserPlus className="mr-2" /> Nuevo Acceso</h3>
+              <button onClick={() => setMostrarModal(false)} className="text-slate-400 hover:text-white"><X /></button>
             </div>
-            <div className="p-6 space-y-4">
+            <div className="p-8 space-y-5">
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">Nombre Completo</label>
-                <input type="text" placeholder="Ej. Juan Pérez" className="w-full px-4 py-2 rounded-lg border border-slate-300 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none text-slate-900" />
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Nombre Completo</label>
+                <div className="relative">
+                  <Users className="absolute left-3 top-3 text-slate-400" size={18} />
+                  <input 
+                    type="text" 
+                    value={nuevoUsuario.nombre}
+                    onChange={(e) => setNuevoUsuario({...nuevoUsuario, nombre: e.target.value})}
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none text-slate-900" 
+                    placeholder="Ej. Juan Pérez"
+                  />
+                </div>
               </div>
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">Correo Institucional</label>
-                <input type="email" placeholder="usuario@homi.org.co" className="w-full px-4 py-2 rounded-lg border border-slate-300 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none text-slate-900" />
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Correo Institucional</label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-3 text-slate-400" size={18} />
+                  <input 
+                    type="email" 
+                    value={nuevoUsuario.email}
+                    onChange={(e) => setNuevoUsuario({...nuevoUsuario, email: e.target.value})}
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none text-slate-900" 
+                    placeholder="usuario@homi.org.co"
+                  />
+                </div>
               </div>
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">Asignar Rol</label>
-                <select defaultValue="" className="w-full px-4 py-2 rounded-lg border border-slate-300 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none text-slate-900">
-                  <option value="" disabled>Seleccione un rol...</option>
-                  <option value="Administrador">Administrador</option>
-                  <option value="Coordinador">Coordinador</option>
-                  <option value="Ingeniero">Ingeniero</option>
-                  <option value="Auditor Concurrente">Auditor Concurrente</option>
-                </select>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Rol Asignado</label>
+                <div className="relative">
+                  <Briefcase className="absolute left-3 top-3 text-slate-400" size={18} />
+                  <select 
+                    value={nuevoUsuario.rol}
+                    onChange={(e) => setNuevoUsuario({...nuevoUsuario, rol: e.target.value})}
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none text-slate-900 appearance-none"
+                  >
+                    <option value="">Seleccionar...</option>
+                    <option value="Administrador">Administrador</option>
+                    <option value="Coordinador">Coordinador</option>
+                    <option value="Ingeniero">Ingeniero</option>
+                    <option value="Auditor Concurrente">Auditor Concurrente</option>
+                  </select>
+                </div>
               </div>
             </div>
-            <div className="bg-slate-50 border-t border-slate-200 px-6 py-4 flex justify-end space-x-3">
-              <button onClick={() => setMostrarModal(false)} className="px-4 py-2 rounded-lg text-sm font-bold text-slate-700 bg-white border border-slate-300 hover:bg-slate-100 transition-colors">Cancelar</button>
-              <button onClick={() => setMostrarModal(false)} className="px-4 py-2 rounded-lg text-sm font-bold text-white bg-blue-800 hover:bg-blue-900 transition-colors shadow-sm">Guardar Usuario</button>
+            <div className="bg-slate-50 p-6 border-t border-slate-100 flex gap-3">
+              <button onClick={() => setMostrarModal(false)} className="flex-1 py-2.5 text-slate-600 font-bold hover:bg-slate-200 rounded-xl transition-all">Cancelar</button>
+              <button onClick={handleCrearUsuario} className="flex-1 py-2.5 bg-blue-800 text-white font-bold rounded-xl hover:bg-blue-900 shadow-md transition-all">Guardar</button>
             </div>
           </div>
         </div>
