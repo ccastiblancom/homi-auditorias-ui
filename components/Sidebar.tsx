@@ -21,7 +21,7 @@ export default function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
 
-  // --- NUEVO: Estado para mostrar los datos del usuario real ---
+  // --- Estado para mostrar los datos del usuario real ---
   const [usuarioActual, setUsuarioActual] = useState({ nombre: 'Cargando...', rol: '', iniciales: '' })
 
   useEffect(() => {
@@ -40,7 +40,7 @@ export default function Sidebar() {
     }
   }, []);
 
-  // --- NUEVA FUNCIÓN: Cerrar sesión ---
+  // --- FUNCIÓN: Cerrar sesión ---
   const handleLogout = () => {
     // 1. Borramos los datos del usuario del navegador
     localStorage.removeItem('usuario_homi');
@@ -48,13 +48,19 @@ export default function Sidebar() {
     router.push('/login');
   };
 
-  // Lista de módulos para renderizar dinámicamente
-  const navItems = [
+  // --- LÓGICA DE PERMISOS (RBAC) ---
+  // Estos 3 módulos los ven TODOS los roles (Coordinador, Auditor, Ingeniero, Admin)
+  const baseNavItems = [
     { href: '/registro', icon: FileText, label: 'Registro auditoría' },
     { href: '/torre-control', icon: BarChart2, label: 'Torre de Control' },
     { href: '/informe', icon: FileBarChart, label: 'Informe Auditoría' },
-    { href: '/configuracion', icon: Settings, label: 'Configuración' },
   ]
+
+  // Si el usuario es Administrador, le sumamos el módulo de Configuración.
+  // Si no, se queda solo con los 3 básicos.
+  const navItems = usuarioActual.rol === 'Administrador' 
+    ? [...baseNavItems, { href: '/configuracion', icon: Settings, label: 'Configuración' }]
+    : baseNavItems;
 
   return (
     <aside 
@@ -146,7 +152,7 @@ export default function Sidebar() {
         </div>
 
         <button 
-          onClick={handleLogout} // <-- CONEXIÓN DE LA FUNCIÓN DE SALIDA
+          onClick={handleLogout}
           className={`flex items-center justify-center space-x-2 bg-slate-50 hover:bg-rose-50 hover:text-rose-600 border border-slate-200 text-slate-600 py-2.5 rounded-xl transition-all duration-200 w-full group ${
             !isExpanded && 'px-0'
           }`}
