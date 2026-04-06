@@ -1,8 +1,8 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { 
   FileText, 
   BarChart2, 
@@ -17,8 +17,36 @@ export default function Sidebar() {
   // Estado para controlar si la barra está expandida o colapsada
   const [isExpanded, setIsExpanded] = useState(true)
   
-  // Hook para saber en qué ruta estamos y resaltar el menú activo
+  // Hooks para navegación y rutas
   const pathname = usePathname()
+  const router = useRouter()
+
+  // --- NUEVO: Estado para mostrar los datos del usuario real ---
+  const [usuarioActual, setUsuarioActual] = useState({ nombre: 'Cargando...', rol: '', iniciales: '' })
+
+  useEffect(() => {
+    // Leer el usuario actual desde la sesión del navegador
+    const userStr = localStorage.getItem('usuario_homi');
+    if (userStr) {
+      const userObj = JSON.parse(userStr);
+      // Generar las iniciales (Ej: "Juan Pérez" -> "JP")
+      const iniciales = userObj.nombre.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase();
+      
+      setUsuarioActual({
+        nombre: userObj.nombre,
+        rol: userObj.rol,
+        iniciales: iniciales
+      });
+    }
+  }, []);
+
+  // --- NUEVA FUNCIÓN: Cerrar sesión ---
+  const handleLogout = () => {
+    // 1. Borramos los datos del usuario del navegador
+    localStorage.removeItem('usuario_homi');
+    // 2. Lo enviamos de regreso a la pantalla de login
+    router.push('/login');
+  };
 
   // Lista de módulos para renderizar dinámicamente
   const navItems = [
@@ -38,7 +66,6 @@ export default function Sidebar() {
       {/* Botón Flotante para Colapsar/Expandir */}
       <button 
         onClick={() => setIsExpanded(!isExpanded)}
-        // Cambiamos top-8 por top-28 para que baje y no se cruce con el Header. Ajustamos el padding a p-1.5
         className="absolute -right-4 top-28 bg-white border border-slate-200 text-slate-500 hover:text-blue-600 rounded-full p-1.5 shadow-md transition-colors z-50 flex items-center justify-center"
       >
         {isExpanded ? <ChevronLeft size={16} strokeWidth={3} /> : <ChevronRight size={16} strokeWidth={3} />}
@@ -107,16 +134,19 @@ export default function Sidebar() {
       {/* Sección Perfil Inferior */}
       <div className={`p-4 border-t border-slate-100 transition-all ${!isExpanded && 'flex flex-col items-center'}`}>
         <div className={`flex items-center ${isExpanded ? 'space-x-3 mb-4' : 'justify-center mb-4'}`}>
-          <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-800 flex items-center justify-center font-bold flex-shrink-0 shadow-inner">
-            CC
+          <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-800 flex items-center justify-center font-bold flex-shrink-0 shadow-inner text-sm">
+            {/* Muestra las iniciales reales */}
+            {usuarioActual.iniciales || 'U'}
           </div>
           <div className={`overflow-hidden transition-all duration-300 ${isExpanded ? 'w-auto opacity-100' : 'w-0 opacity-0'}`}>
-            <p className="text-sm font-bold text-slate-800 whitespace-nowrap">Cristian Castiblanco</p>
-            <p className="text-xs text-slate-500 whitespace-nowrap">Ingeniero de Modelos...</p>
+            {/* Muestra el nombre y rol reales truncados si son muy largos */}
+            <p className="text-sm font-bold text-slate-800 whitespace-nowrap truncate w-36" title={usuarioActual.nombre}>{usuarioActual.nombre}</p>
+            <p className="text-xs text-slate-500 whitespace-nowrap truncate w-36" title={usuarioActual.rol}>{usuarioActual.rol}</p>
           </div>
         </div>
 
         <button 
+          onClick={handleLogout} // <-- CONEXIÓN DE LA FUNCIÓN DE SALIDA
           className={`flex items-center justify-center space-x-2 bg-slate-50 hover:bg-rose-50 hover:text-rose-600 border border-slate-200 text-slate-600 py-2.5 rounded-xl transition-all duration-200 w-full group ${
             !isExpanded && 'px-0'
           }`}
