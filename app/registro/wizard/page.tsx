@@ -1,7 +1,8 @@
 'use client'
 import { useState, useEffect, Suspense, useRef } from 'react';
-import { useSearchParams } from 'next/navigation';
-import { ArrowRight, ArrowLeft, ClipboardList, Info, Calendar, Activity, Lock } from 'lucide-react';
+import { useSearchParams, useRouter } from 'next/navigation'; // <-- Agregado useRouter
+import { supabase } from '@/lib/supabase'; // <-- Conexión a Supabase
+import { ArrowRight, ArrowLeft, ClipboardList, Info, Calendar, Activity, Lock, Loader2, Check } from 'lucide-react';
 
 // Importamos la data de los flujos
 import { flujoUrgencias } from '@/data/preguntas-urgencias';
@@ -11,7 +12,7 @@ import { flujoConsulta } from '@/data/preguntas-consulta';
 
 export default function WizardPage() {
   return (
-    <Suspense fallback={<div className="p-10 text-center font-bold text-blue-900">Cargando auditoría...</div>}>
+    <Suspense fallback={<div className="p-10 text-center font-bold text-blue-900 flex justify-center"><Loader2 className="animate-spin mr-2" /> Cargando auditoría...</div>}>
       <FormularioAuditoria />
     </Suspense>
   );
@@ -19,6 +20,7 @@ export default function WizardPage() {
 
 function FormularioAuditoria() {
   const searchParams = useSearchParams();
+  const router = useRouter(); // <-- Para redirigir al final
   const flujoId = searchParams.get('flujo'); 
   const topRef = useRef<HTMLDivElement>(null);
 
@@ -34,6 +36,9 @@ function FormularioAuditoria() {
   const [puntoActual, setPuntoActual] = useState(0);
   const [preguntaActual, setPreguntaActual] = useState(0);
   const [fechaBogota, setFechaBogota] = useState('');
+  
+  // --- NUEVO: Estado de carga al enviar a BD ---
+  const [cargandoEnvio, setCargandoEnvio] = useState(false);
 
   // --- ESTADOS DE LOS INPUTS ---
   const [pacienteId, setPacienteId] = useState(''); 
@@ -41,6 +46,9 @@ function FormularioAuditoria() {
   const [responsable, setResponsable] = useState('');
   const [evidencia, setEvidencia] = useState('');
   const [clasificacion, setClasificacion] = useState('');
+
+  // --- NUEVO: Diccionario para acumular las respuestas ---
+  const [respuestasGuardadas, setRespuestasGuardadas] = useState<Record<string, any>>({});
 
   // Lógica para saber si es la primera pregunta absoluta de la auditoría
   const esPrimeraPreguntaAbsoluta = puntoActual === 0 && preguntaActual === 0;
@@ -57,39 +65,140 @@ function FormularioAuditoria() {
     setFechaBogota(date);
   }, []);
 
-  const handleSiguiente = () => {
-    // Validación: Si es la primera pregunta y no han puesto ID, avisar (opcional)
+  // --- NUEVO: Función para cargar la respuesta si el usuario retrocede ---
+  const cargarDatosPregunta = (respuestasDict: Record<string, any>, pPunto: number, pPregunta: number) => {
+    const key = `${pPunto}-${pPregunta}`;
+    const rep = respuestasDict[key];
+    setClasificacion(rep ? rep.clasificacion : '');
+    setHallazgo(rep ? rep.hallazgo : '');
+    setResponsable(rep ? rep.responsable : '');
+    setEvidencia(rep ? rep.evidencia : '');
+  };
+
+  const handleSiguiente = async () => {
+    // Validación de ID
     if (esPrimeraPreguntaAbsoluta && !pacienteId) {
       alert("Por favor, ingrese la identificación del paciente para continuar.");
       return;
     }
 
-    if (preguntaActual < punto.preguntas.length - 1) {
-      setPreguntaActual(preguntaActual + 1);
-    } else if (puntoActual < flujoActivo.puntosControl.length - 1) {
-      setPuntoActual(puntoActual + 1);
-      setPreguntaActual(0);
-    } else {
-      alert("¡Auditoría Finalizada!");
+    // Validación de clasificación obligatoria
+    if (!clasificacion) {
+      alert("Por favor, seleccione una clasificación para el hallazgo.");
+      return;
     }
 
-    // LIMPIEZA DE CAMPOS (Solo los de la respuesta, NO el pacienteId)
-    setHallazgo('');
-    setResponsable('');
-    setEvidencia('');
-    setClasificacion('');
+    // 1. Guardar la respuesta actual en memoria
+    const key = `${puntoActual}-${preguntaActual}`;
+    const respuestaActual = {
+      punto_control: punto.nombre,
+      pregunta: preguntaData.pregunta,
+      clasificacion,
+      hallazgo,
+      responsable,
+      evidencia
+    };
+    const nuevasRespuestas = { ...respuestasGuardadas, [key]: respuestaActual };
+    setRespuestasGuardadas(nuevasRespuestas);
+
+    // 2. Verificar si es la última pregunta absoluta
+    const esUltimaPregunta = preguntaActual === punto.preguntas.length - 1;
+    const esUltimoPunto = puntoActual === flujoActivo.puntosControl.length - 1;
+
+    if (esUltimaPregunta && esUltimoPunto) {
+      await enviarASupabase(nuevasRespuestas);
+      return;
+    }
+
+    // 3. Si no es el final, avanzamos a la siguiente pregunta
+    let nextPunto = puntoActual;
+    let nextPregunta = preguntaActual;
+
+    if (!esUltimaPregunta) {
+      nextPregunta++;
+    } else {
+      nextPunto++;
+      nextPregunta = 0;
+    }
+
+    setPuntoActual(nextPunto);
+    setPreguntaActual(nextPregunta);
     
+    // Cargar si ya había respondido antes y se devolvió
+    cargarDatosPregunta(nuevasRespuestas, nextPunto, nextPregunta);
     topRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   const handleAnterior = () => {
+    let prevPunto = puntoActual;
+    let prevPregunta = preguntaActual;
+
     if (preguntaActual > 0) {
-      setPreguntaActual(preguntaActual - 1);
+      prevPregunta--;
     } else if (puntoActual > 0) {
-      setPuntoActual(puntoActual - 1);
-      setPreguntaActual(flujoActivo.puntosControl[puntoActual - 1].preguntas.length - 1);
+      prevPunto--;
+      prevPregunta = flujoActivo.puntosControl[prevPunto].preguntas.length - 1;
     }
+
+    setPuntoActual(prevPunto);
+    setPreguntaActual(prevPregunta);
+    
+    // Recuperar la respuesta que el usuario había puesto en esa pregunta anterior
+    cargarDatosPregunta(respuestasGuardadas, prevPunto, prevPregunta);
     topRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  // --- NUEVA FUNCIÓN: ENVIAR A SUPABASE ---
+  const enviarASupabase = async (todasLasRespuestas: Record<string, any>) => {
+    setCargandoEnvio(true);
+    try {
+      const arrRespuestas = Object.values(todasLasRespuestas);
+      const cantidadHallazgos = arrRespuestas.filter(r => r.clasificacion === 'No conformidad').length;
+      const codigoGenerado = `AUD-${Math.floor(10000 + Math.random() * 90000)}`;
+
+      // 1. Insertar Cabecera de Auditoría
+      const { data: auditData, error: auditError } = await supabase
+        .from('auditorias')
+        .insert([{
+          codigo_auditoria: codigoGenerado,
+          paciente_id: pacienteId,
+          flujo: flujoActivo.titulo,
+          estado: cantidadHallazgos > 0 ? 'Pendiente' : 'Gestionado',
+          cantidad_hallazgos: cantidadHallazgos
+        }])
+        .select();
+
+      if (auditError) throw auditError;
+
+      const auditoriaId = auditData[0].id;
+
+      // 2. Preparar los detalles
+      const insertRespuestas = arrRespuestas.map(r => ({
+        auditoria_id: auditoriaId,
+        punto_control: r.punto_control,
+        pregunta: r.pregunta,
+        clasificacion: r.clasificacion,
+        hallazgo: r.hallazgo,
+        responsable: r.responsable,
+        evidencia: r.evidencia
+      }));
+
+      // 3. Insertar Respuestas
+      const { error: respError } = await supabase
+        .from('auditoria_respuestas')
+        .insert(insertRespuestas);
+
+      if (respError) throw respError;
+
+      alert(`¡Auditoría guardada exitosamente! \nCódigo: ${codigoGenerado}`);
+      router.push('/torre-control'); // Redirigir a la torre de control
+
+    } catch (error) {
+      console.error('Error al guardar la auditoría:', error);
+      alert('Hubo un error de conexión al intentar guardar la auditoría.');
+    } finally {
+      setCargandoEnvio(false);
+    }
   };
 
   return (
@@ -207,7 +316,7 @@ function FormularioAuditoria() {
             </div>
 
             <div className="md:col-span-2">
-              <label className="block text-sm font-semibold text-slate-700 mb-2">Clasificación del hallazgo</label>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">Clasificación del hallazgo <span className="text-rose-500">*</span></label>
               <select 
                 value={clasificacion}
                 onChange={(e) => setClasificacion(e.target.value)}
@@ -225,7 +334,7 @@ function FormularioAuditoria() {
         <div className="bg-slate-50 px-8 py-5 border-t border-slate-200 flex justify-between items-center">
           <button 
             onClick={handleAnterior}
-            disabled={esPrimeraPreguntaAbsoluta}
+            disabled={esPrimeraPreguntaAbsoluta || cargandoEnvio}
             className={`flex items-center space-x-2 px-5 py-2.5 rounded-lg font-semibold transition-all ${
               esPrimeraPreguntaAbsoluta 
                 ? 'text-slate-400 bg-slate-100 cursor-not-allowed' 
@@ -238,10 +347,20 @@ function FormularioAuditoria() {
 
           <button 
             onClick={handleSiguiente}
-            className="flex items-center space-x-2 px-6 py-2.5 rounded-lg font-semibold text-white bg-blue-600 hover:bg-blue-700 hover:shadow-md transition-all active:scale-95"
+            disabled={cargandoEnvio}
+            className={`flex items-center space-x-2 px-6 py-2.5 rounded-lg font-semibold text-white transition-all active:scale-95 ${
+              preguntaActual === punto.preguntas.length - 1 && puntoActual === flujoActivo.puntosControl.length - 1 
+                ? 'bg-emerald-600 hover:bg-emerald-700 shadow-md' 
+                : 'bg-blue-600 hover:bg-blue-700 hover:shadow-md'
+            }`}
           >
-            <span>{preguntaActual === punto.preguntas.length - 1 && puntoActual === flujoActivo.puntosControl.length - 1 ? 'Finalizar' : 'Siguiente'}</span>
-            <ArrowRight size={18} />
+            {cargandoEnvio ? (
+              <><Loader2 className="animate-spin" size={18} /> <span>Guardando...</span></>
+            ) : preguntaActual === punto.preguntas.length - 1 && puntoActual === flujoActivo.puntosControl.length - 1 ? (
+              <><span>Finalizar Auditoría</span> <Check size={18} /></>
+            ) : (
+              <><span>Siguiente</span> <ArrowRight size={18} /></>
+            )}
           </button>
         </div>
 
