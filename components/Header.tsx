@@ -4,6 +4,7 @@ import { Search, Bell, Activity } from 'lucide-react';
 
 export default function Header() {
   const [fecha, setFecha] = useState('');
+  const [nombreUsuario, setNombreUsuario] = useState('Equipo'); // <-- NUEVO ESTADO PARA EL NOMBRE
 
   // Usamos useEffect para evitar errores de hidratación en Next.js con la fecha
   useEffect(() => {
@@ -16,6 +17,15 @@ export default function Header() {
     // Capitalizamos la primera letra de la fecha para que se vea más elegante
     const fechaFormateada = new Date().toLocaleDateString('es-CO', opciones);
     setFecha(fechaFormateada.charAt(0).toUpperCase() + fechaFormateada.slice(1));
+
+    // --- NUEVA LÓGICA: LEER EL USUARIO DE LA SESIÓN ---
+    const userStr = localStorage.getItem('usuario_homi');
+    if (userStr) {
+      const userObj = JSON.parse(userStr);
+      // Tomamos el nombre completo y extraemos solo la primera palabra
+      const primerNombre = userObj.nombre.split(' ')[0];
+      setNombreUsuario(primerNombre);
+    }
   }, []);
 
   return (
@@ -24,7 +34,7 @@ export default function Header() {
       {/* Sección Izquierda: Saludo y Contexto */}
       <div>
         <h1 className="text-xl font-extrabold text-slate-800 tracking-tight">
-          ¡Hola, Cristian! 👋
+          ¡Hola, {nombreUsuario}! 👋
         </h1>
         <p className="text-sm text-slate-500 font-medium mt-0.5">
           {fecha ? fecha : 'Cargando fecha...'}
