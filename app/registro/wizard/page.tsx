@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, Suspense, useRef } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation'; // <-- Agregado useRouter
-import { supabase } from '@/lib/supabase'; // <-- Conexión a Supabase
+import { useSearchParams, useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabase';
 import { ArrowRight, ArrowLeft, ClipboardList, Info, Calendar, Activity, Lock, Loader2, Check } from 'lucide-react';
 
 // Importamos la data de los flujos
@@ -20,8 +20,16 @@ export default function WizardPage() {
 
 function FormularioAuditoria() {
   const searchParams = useSearchParams();
-  const router = useRouter(); // <-- Para redirigir al final
+  const router = useRouter(); 
+  
+  // Capturamos el flujo y el punto específico desde la URL
   const flujoId = searchParams.get('flujo'); 
+  const puntoParam = searchParams.get('punto');
+  const puntoIndex = puntoParam ? parseInt(puntoParam) : 0;
+  
+  // Clave única para el autoguardado de este formulario específico
+  const draftKey = `draft_homi_${flujoId}_${puntoIndex}`;
+
   const topRef = useRef<HTMLDivElement>(null);
 
   const flujosData: Record<string, any> = {
@@ -32,42 +40,79 @@ function FormularioAuditoria() {
   };
 
   const flujoActivo = (flujoId && flujosData[flujoId]) ? flujosData[flujoId] : flujoUrgencias;
+  const punto = flujoActivo.puntosControl[puntoIndex] || flujoActivo.puntosControl[0];
 
-  const [puntoActual, setPuntoActual] = useState(0);
   const [preguntaActual, setPreguntaActual] = useState(0);
   const [fechaBogota, setFechaBogota] = useState('');
-  
-  // --- NUEVO: Estado de carga al enviar a BD ---
   const [cargandoEnvio, setCargandoEnvio] = useState(false);
 
-  // --- ESTADOS DE LOS INPUTS ---
+  // --- NUEVO: Estado para almacenar el nombre del auditor silenciosamente ---
+  const [auditorNombre, setAuditorNombre] = useState('Auditor Desconocido');
+
+  // ESTADOS DE LOS INPUTS
   const [pacienteId, setPacienteId] = useState(''); 
+  const [pacienteNombre, setPacienteNombre] = useState(''); 
   const [hallazgo, setHallazgo] = useState('');
   const [responsable, setResponsable] = useState('');
   const [evidencia, setEvidencia] = useState('');
   const [clasificacion, setClasificacion] = useState('');
 
-  // --- NUEVO: Diccionario para acumular las respuestas ---
   const [respuestasGuardadas, setRespuestasGuardadas] = useState<Record<string, any>>({});
 
-  // Lógica para saber si es la primera pregunta absoluta de la auditoría
-  const esPrimeraPreguntaAbsoluta = puntoActual === 0 && preguntaActual === 0;
+  const esPrimeraPregunta = preguntaActual === 0;
+  const esUltimaPregunta = preguntaActual === punto.preguntas.length - 1;
 
-  const punto = flujoActivo.puntosControl[puntoActual];
   const preguntaData = punto.preguntas[preguntaActual];
   const progreso = ((preguntaActual + 1) / punto.preguntas.length) * 100;
 
   useEffect(() => {
+    // 1. Configurar fecha
     const date = new Date().toLocaleDateString("es-CO", { 
       timeZone: "America/Bogota",
       year: 'numeric', month: 'long', day: 'numeric' 
     });
     setFechaBogota(date);
-  }, []);
 
-  // --- NUEVO: Función para cargar la respuesta si el usuario retrocede ---
-  const cargarDatosPregunta = (respuestasDict: Record<string, any>, pPunto: number, pPregunta: number) => {
-    const key = `${pPunto}-${pPregunta}`;
+    // --- NUEVO: Leer quién está logueado para registrarlo como auditor ---
+    const userStr = localStorage.getItem('usuario_homi');
+    if (userStr) {
+      try {
+        const userObj = JSON.parse(userStr);
+        if (userObj.nombre) {
+          setAuditorNombre(userObj.nombre);
+        }
+      } catch (e) {
+        console.error("Error leyendo usuario", e);
+      }
+    }
+
+    // 2. Leer si hay un borrador guardado
+    const savedDraft = localStorage.getItem(draftKey);
+    if (savedDraft) {
+      try {
+        const parsed = JSON.parse(savedDraft);
+        if (parsed.pacienteId) setPacienteId(parsed.pacienteId);
+        if (parsed.pacienteNombre) setPacienteNombre(parsed.pacienteNombre);
+        if (parsed.respuestasGuardadas) setRespuestasGuardadas(parsed.respuestasGuardadas);
+        
+        // Si había un progreso, saltar a esa pregunta y cargar sus datos
+        if (parsed.preguntaActual !== undefined) {
+          setPreguntaActual(parsed.preguntaActual);
+          const key = `pregunta-${parsed.preguntaActual}`;
+          const rep = parsed.respuestasGuardadas[key];
+          setClasificacion(rep ? rep.clasificacion : '');
+          setHallazgo(rep ? rep.hallazgo : '');
+          setResponsable(rep ? rep.responsable : '');
+          setEvidencia(rep ? rep.evidencia : '');
+        }
+      } catch (e) {
+        console.error("Error leyendo autoguardado", e);
+      }
+    }
+  }, [draftKey]);
+
+  const cargarDatosPregunta = (respuestasDict: Record<string, any>, pPregunta: number) => {
+    const key = `pregunta-${pPregunta}`;
     const rep = respuestasDict[key];
     setClasificacion(rep ? rep.clasificacion : '');
     setHallazgo(rep ? rep.hallazgo : '');
@@ -76,20 +121,19 @@ function FormularioAuditoria() {
   };
 
   const handleSiguiente = async () => {
-    // Validación de ID
-    if (esPrimeraPreguntaAbsoluta && !pacienteId) {
-      alert("Por favor, ingrese la identificación del paciente para continuar.");
+    // Validación de ID y Nombre en la primera pregunta
+    if (esPrimeraPregunta && (!pacienteId || !pacienteNombre)) {
+      alert("Por favor, ingrese la identificación y el nombre del paciente para continuar.");
       return;
     }
 
-    // Validación de clasificación obligatoria
     if (!clasificacion) {
       alert("Por favor, seleccione una clasificación para el hallazgo.");
       return;
     }
 
     // 1. Guardar la respuesta actual en memoria
-    const key = `${puntoActual}-${preguntaActual}`;
+    const key = `pregunta-${preguntaActual}`;
     const respuestaActual = {
       punto_control: punto.nombre,
       pregunta: preguntaData.pregunta,
@@ -98,57 +142,51 @@ function FormularioAuditoria() {
       responsable,
       evidencia
     };
+    
     const nuevasRespuestas = { ...respuestasGuardadas, [key]: respuestaActual };
     setRespuestasGuardadas(nuevasRespuestas);
 
-    // 2. Verificar si es la última pregunta absoluta
-    const esUltimaPregunta = preguntaActual === punto.preguntas.length - 1;
-    const esUltimoPunto = puntoActual === flujoActivo.puntosControl.length - 1;
-
-    if (esUltimaPregunta && esUltimoPunto) {
+    // 2. Verificar si es la última pregunta del punto de control
+    if (esUltimaPregunta) {
       await enviarASupabase(nuevasRespuestas);
       return;
     }
 
     // 3. Si no es el final, avanzamos a la siguiente pregunta
-    let nextPunto = puntoActual;
-    let nextPregunta = preguntaActual;
-
-    if (!esUltimaPregunta) {
-      nextPregunta++;
-    } else {
-      nextPunto++;
-      nextPregunta = 0;
-    }
-
-    setPuntoActual(nextPunto);
+    const nextPregunta = preguntaActual + 1;
     setPreguntaActual(nextPregunta);
     
-    // Cargar si ya había respondido antes y se devolvió
-    cargarDatosPregunta(nuevasRespuestas, nextPunto, nextPregunta);
+    // Guardar en el navegador (Autoguardado)
+    localStorage.setItem(draftKey, JSON.stringify({
+      pacienteId,
+      pacienteNombre,
+      respuestasGuardadas: nuevasRespuestas,
+      preguntaActual: nextPregunta
+    }));
+
+    // Cargar datos si ya había respondido antes y se devolvió
+    cargarDatosPregunta(nuevasRespuestas, nextPregunta);
     topRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   const handleAnterior = () => {
-    let prevPunto = puntoActual;
-    let prevPregunta = preguntaActual;
-
     if (preguntaActual > 0) {
-      prevPregunta--;
-    } else if (puntoActual > 0) {
-      prevPunto--;
-      prevPregunta = flujoActivo.puntosControl[prevPunto].preguntas.length - 1;
-    }
+      const prevPregunta = preguntaActual - 1;
+      setPreguntaActual(prevPregunta);
+      cargarDatosPregunta(respuestasGuardadas, prevPregunta);
+      
+      // Actualizar el autoguardado al retroceder
+      localStorage.setItem(draftKey, JSON.stringify({
+        pacienteId,
+        pacienteNombre,
+        respuestasGuardadas,
+        preguntaActual: prevPregunta
+      }));
 
-    setPuntoActual(prevPunto);
-    setPreguntaActual(prevPregunta);
-    
-    // Recuperar la respuesta que el usuario había puesto en esa pregunta anterior
-    cargarDatosPregunta(respuestasGuardadas, prevPunto, prevPregunta);
-    topRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      topRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   };
 
-  // --- NUEVA FUNCIÓN: ENVIAR A SUPABASE ---
   const enviarASupabase = async (todasLasRespuestas: Record<string, any>) => {
     setCargandoEnvio(true);
     try {
@@ -156,13 +194,16 @@ function FormularioAuditoria() {
       const cantidadHallazgos = arrRespuestas.filter(r => r.clasificacion === 'No conformidad').length;
       const codigoGenerado = `AUD-${Math.floor(10000 + Math.random() * 90000)}`;
 
-      // 1. Insertar Cabecera de Auditoría
+      // 1. Insertar Cabecera de Auditoría (AHORA ENVIANDO EL AUDITOR)
       const { data: auditData, error: auditError } = await supabase
         .from('auditorias')
         .insert([{
           codigo_auditoria: codigoGenerado,
           paciente_id: pacienteId,
+          paciente_nombre: pacienteNombre, 
           flujo: flujoActivo.titulo,
+          punto_control: punto.nombre,
+          auditor_nombre: auditorNombre, // <-- DATO SILENCIOSO ENVIADO
           estado: cantidadHallazgos > 0 ? 'Pendiente' : 'Gestionado',
           cantidad_hallazgos: cantidadHallazgos
         }])
@@ -190,12 +231,15 @@ function FormularioAuditoria() {
 
       if (respError) throw respError;
 
+      // Eliminar el borrador local porque ya se envió exitosamente
+      localStorage.removeItem(draftKey);
+
       alert(`¡Auditoría guardada exitosamente! \nCódigo: ${codigoGenerado}`);
-      router.push('/torre-control'); // Redirigir a la torre de control
+      router.push('/torre-control');
 
     } catch (error) {
       console.error('Error al guardar la auditoría:', error);
-      alert('Hubo un error de conexión al intentar guardar la auditoría.');
+      alert('Hubo un error de conexión al intentar guardar la auditoría. Revisa tu base de datos.');
     } finally {
       setCargandoEnvio(false);
     }
@@ -214,8 +258,8 @@ function FormularioAuditoria() {
               <Activity className="text-blue-400" size={24} />
             </div>
             <div>
-              <p className="text-xs font-semibold tracking-wider text-slate-400 uppercase mb-1">Auditoría en curso</p>
-              <h2 className="text-2xl font-bold text-white">{flujoActivo.titulo}</h2>
+              <p className="text-xs font-semibold tracking-wider text-slate-400 uppercase mb-1">{flujoActivo.titulo}</p>
+              <h2 className="text-2xl font-bold text-white">{punto.nombre}</h2>
             </div>
           </div>
           <div className="flex items-center text-slate-300 bg-slate-800 px-4 py-2 rounded-lg">
@@ -236,7 +280,7 @@ function FormularioAuditoria() {
         <div className="p-8 sm:p-10">
           <div className="inline-flex items-center px-4 py-2 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700 text-sm font-bold mb-8">
             <ClipboardList className="w-4 h-4 mr-2" />
-            {punto.nombre}
+            Pregunta {preguntaActual + 1} de {punto.preguntas.length}
           </div>
 
           <div className="mb-10">
@@ -258,31 +302,50 @@ function FormularioAuditoria() {
           {/* CAMPOS DE ENTRADA */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             
-            {/* CAMPO: IDENTIFICACIÓN (Lógica de Deshabilitado) */}
-            <div className="md:col-span-2">
+            {/* CAMPO: IDENTIFICACIÓN */}
+            <div>
               <label className="flex items-center text-sm font-semibold text-slate-700 mb-2">
                 Identificación del paciente
-                {!esPrimeraPreguntaAbsoluta && (
-                  <span className="ml-2 flex items-center text-xs font-normal text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
-                    <Lock size={12} className="mr-1" /> Bloqueado para esta auditoría
-                  </span>
-                )}
               </label>
               <input 
                 type="number" 
                 value={pacienteId}
                 onChange={(e) => setPacienteId(e.target.value)}
-                disabled={!esPrimeraPreguntaAbsoluta} // SE DESHABILITA SI NO ES LA PRIMERA
+                disabled={!esPrimeraPregunta} 
                 placeholder="Ingrese número de documento"
                 className={`w-full px-4 py-3 rounded-xl border outline-none transition-all ${
-                  esPrimeraPreguntaAbsoluta 
+                  esPrimeraPregunta 
                     ? "border-slate-300 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 text-slate-900" 
                     : "border-slate-200 bg-slate-100 text-slate-500 cursor-not-allowed font-medium"
                 }`}
               />
             </div>
 
-            <div className="md:col-span-2">
+            {/* CAMPO: NOMBRE DEL PACIENTE */}
+            <div>
+              <label className="flex items-center text-sm font-semibold text-slate-700 mb-2">
+                Nombre del paciente
+                {!esPrimeraPregunta && (
+                  <span className="ml-2 flex items-center text-xs font-normal text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
+                    <Lock size={12} className="mr-1" /> Bloqueado
+                  </span>
+                )}
+              </label>
+              <input 
+                type="text" 
+                value={pacienteNombre}
+                onChange={(e) => setPacienteNombre(e.target.value)}
+                disabled={!esPrimeraPregunta} 
+                placeholder="Nombre completo"
+                className={`w-full px-4 py-3 rounded-xl border outline-none transition-all ${
+                  esPrimeraPregunta 
+                    ? "border-slate-300 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 text-slate-900" 
+                    : "border-slate-200 bg-slate-100 text-slate-500 cursor-not-allowed font-medium"
+                }`}
+              />
+            </div>
+
+            <div className="md:col-span-2 mt-4">
               <label className="block text-sm font-semibold text-slate-700 mb-2">Descripción del hallazgo</label>
               <textarea 
                 rows={3}
@@ -325,6 +388,7 @@ function FormularioAuditoria() {
                 <option value="">Seleccione una clasificación...</option>
                 <option value="Conformidad">✅ Conformidad (Cumple)</option>
                 <option value="No conformidad">❌ No conformidad (No cumple)</option>
+                <option value="No aplica">➖ No aplica</option>
               </select>
             </div>
           </div>
@@ -334,9 +398,9 @@ function FormularioAuditoria() {
         <div className="bg-slate-50 px-8 py-5 border-t border-slate-200 flex justify-between items-center">
           <button 
             onClick={handleAnterior}
-            disabled={esPrimeraPreguntaAbsoluta || cargandoEnvio}
+            disabled={esPrimeraPregunta || cargandoEnvio}
             className={`flex items-center space-x-2 px-5 py-2.5 rounded-lg font-semibold transition-all ${
-              esPrimeraPreguntaAbsoluta 
+              esPrimeraPregunta 
                 ? 'text-slate-400 bg-slate-100 cursor-not-allowed' 
                 : 'text-slate-700 hover:bg-slate-200 hover:text-slate-900'
             }`}
@@ -349,14 +413,14 @@ function FormularioAuditoria() {
             onClick={handleSiguiente}
             disabled={cargandoEnvio}
             className={`flex items-center space-x-2 px-6 py-2.5 rounded-lg font-semibold text-white transition-all active:scale-95 ${
-              preguntaActual === punto.preguntas.length - 1 && puntoActual === flujoActivo.puntosControl.length - 1 
+              esUltimaPregunta 
                 ? 'bg-emerald-600 hover:bg-emerald-700 shadow-md' 
                 : 'bg-blue-600 hover:bg-blue-700 hover:shadow-md'
             }`}
           >
             {cargandoEnvio ? (
               <><Loader2 className="animate-spin" size={18} /> <span>Guardando...</span></>
-            ) : preguntaActual === punto.preguntas.length - 1 && puntoActual === flujoActivo.puntosControl.length - 1 ? (
+            ) : esUltimaPregunta ? (
               <><span>Finalizar Auditoría</span> <Check size={18} /></>
             ) : (
               <><span>Siguiente</span> <ArrowRight size={18} /></>

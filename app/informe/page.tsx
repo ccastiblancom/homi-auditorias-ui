@@ -1,33 +1,42 @@
 'use client'
-import { useState, useRef } from 'react';
-import { jsPDF } from 'jspdf';
-import { toPng } from 'html-to-image';
-import { supabase } from '@/lib/supabase'; // <-- Conexión a Supabase
+import { useState } from 'react';
+import { supabase } from '@/lib/supabase';
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 import { 
   Filter, 
   Download, 
   FileText, 
-  Calendar, 
   CheckCircle, 
   XCircle, 
   Building2,
   Award,
   Loader2,
-  Search
+  Search,
+  AlertCircle
 } from 'lucide-react';
+
+// --- FUNCIÓN AUXILIAR PARA CARGAR EL LOGO COMO BASE64 ---
+const getBase64ImageFromUrl = async (imageUrl: string): Promise<string> => {
+  const res = await fetch(imageUrl);
+  const blob = await res.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => resolve(reader.result as string), false);
+    reader.addEventListener("error", () => reject(new Error("Error loading image")));
+    reader.readAsDataURL(blob);
+  });
+};
 
 export default function InformeAuditoriaPage() {
   const [flujoSeleccionado, setFlujoSeleccionado] = useState('Todos');
   const [informeId, setInformeId] = useState('');
   
-  // Estado para guardar los datos reales consultados
   const [informeGenerado, setInformeGenerado] = useState<any>(null);
   const [isGenerando, setIsGenerando] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
-  
-  const informeRef = useRef<HTMLDivElement>(null);
 
-  // --- FUNCIÓN PARA CONSULTAR SUPABASE Y GENERAR INFORME ---
+  // --- FUNCIÓN PARA CONSULTAR SUPABASE Y GENERAR INFORME (VISTA WEB) ---
   const handleGenerarInforme = async () => {
     if (!informeId) {
       alert("Por favor, ingrese el ID del informe (Ej: AUD-10245)");
@@ -38,7 +47,6 @@ export default function InformeAuditoriaPage() {
     setInformeGenerado(null);
 
     try {
-      // 1. Buscar la cabecera de la auditoría
       const { data: auditData, error: auditError } = await supabase
         .from('auditorias')
         .select('*')
@@ -51,7 +59,6 @@ export default function InformeAuditoriaPage() {
         return;
       }
 
-      // 2. Buscar las respuestas asociadas a esa auditoría
       const { data: respData, error: respError } = await supabase
         .from('auditoria_respuestas')
         .select('*')
@@ -59,7 +66,6 @@ export default function InformeAuditoriaPage() {
 
       if (respError) throw respError;
 
-      // 3. Transformar los datos para adaptarlos al diseño (Agrupar por Punto de Control)
       const agrupado = (respData || []).reduce((acc: any, curr: any) => {
         if (!acc[curr.punto_control]) acc[curr.punto_control] = [];
         acc[curr.punto_control].push({
@@ -76,33 +82,25 @@ export default function InformeAuditoriaPage() {
         preguntas: agrupado[nombre]
       }));
 
-      // 4. Calcular el Score y el Ranking matemáticamente
-      const totalPreguntas = respData?.length || 0;
+      const preguntasAplica = respData?.filter(r => r.clasificacion !== 'No aplica').length || 0;
       const conformidades = respData?.filter(r => r.clasificacion === 'Conformidad').length || 0;
-      const calculoScore = totalPreguntas > 0 ? Math.round((conformidades / totalPreguntas) * 100) : 0;
+      const calculoScore = preguntasAplica > 0 ? Math.round((conformidades / preguntasAplica) * 100) : 0;
       
       let textoRanking = 'Crítico (Requiere intervención inmediata)';
       if (calculoScore >= 90) textoRanking = 'Excelente (Cumplimiento superior)';
       else if (calculoScore >= 75) textoRanking = 'Aceptable (Requiere mejoras)';
 
-      // 5. Armar el objeto final
       const fechaFormateada = new Date(auditData.fecha_creacion).toLocaleDateString("es-CO", { 
         year: 'numeric', month: 'long', day: 'numeric' 
       });
 
-      // Intentar obtener el nombre del usuario logueado desde localStorage si existe
-      let nombreAuditor = 'Auditor Concurrente';
-      const userStr = localStorage.getItem('usuario_homi');
-      if (userStr) {
-        const userObj = JSON.parse(userStr);
-        nombreAuditor = userObj.nombre;
-      }
+      const nombreAuditorReal = auditData.auditor_nombre || 'Auditor Concurrente';
 
       setInformeGenerado({
         id: auditData.codigo_auditoria,
         flujo: auditData.flujo,
         fecha: fechaFormateada,
-        auditor: nombreAuditor,
+        auditor: nombreAuditorReal,
         score: calculoScore,
         ranking: textoRanking,
         puntos: puntosEstructurados
@@ -116,38 +114,163 @@ export default function InformeAuditoriaPage() {
     }
   };
 
-  // Función profesional para generar PDF directo usando html-to-image
+  // --- MAGIA: MOTOR DE PDF NATIVO CON ESTILOS CORREGIDOS ---
   const handleExportPDF = async () => {
-    const elemento = informeRef.current;
-    if (!elemento) return;
-
     setIsExporting(true);
 
     try {
-      // Usamos toPng de html-to-image que soporta CSS moderno sin errores
-      const dataUrl = await toPng(elemento, { 
-        quality: 1,
-        pixelRatio: 2, // Alta resolución para textos nítidos
-        backgroundColor: '#ffffff' // Fondo blanco asegurado
-      });
+      const doc = new jsPDF({ format: 'letter' });
+
+      // Cargar el Logo (si falla, no rompe la descarga)
+      let logoBase64 = null;
+      try {
+        logoBase64 = await getBase64ImageFromUrl('/HOMI_LOGO.png');
+      } catch (e) {
+        console.warn("No se pudo cargar el logo para el PDF.");
+      }
+
+      // --- CABECERA CORPORATIVA ---
+      if (logoBase64) {
+        // x: 14, y: 15, ancho: 40, alto: 14
+        doc.addImage(logoBase64, 'PNG', 14, 15, 40, 14);
+      } else {
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(20);
+        doc.setTextColor(30, 58, 138);
+        doc.text("HOMI", 14, 25);
+      }
+
+      // Títulos Centrales
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(12);
+      doc.setTextColor(15, 23, 42); 
+      doc.text("INFORME OFICIAL DE AUDITORÍA", 60, 20);
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9); // Reducido para mejor proporción
+      doc.setTextColor(100, 116, 139);
+      doc.text("Sistema de Gestión de Calidad", 60, 25);
+
+      // Datos a la Derecha
+      doc.setFontSize(9);
+      doc.setTextColor(15, 23, 42);
+      doc.text(`ID Informe: ${informeGenerado.id}`, 155, 20);
+      doc.text(`Fecha: ${informeGenerado.fecha}`, 155, 25);
+
+      // Línea separadora
+      doc.setDrawColor(203, 213, 225); 
+      doc.setLineWidth(0.5);
+      doc.line(14, 32, 202, 32);
+
+      // --- RESUMEN DE CALIFICACIÓN ---
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(11);
+      doc.setTextColor(30, 58, 138);
+      doc.text("Resumen de Calificación", 14, 40);
+
+      // Columna Izquierda
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(15, 23, 42);
+      doc.text("Flujo Auditado:", 14, 48);
+      doc.setFont("helvetica", "bold");
+      doc.text(informeGenerado.flujo, 40, 48);
+
+      doc.setFont("helvetica", "normal");
+      doc.text("Auditor Líder:", 14, 54);
+      doc.setFont("helvetica", "bold");
+      doc.text(informeGenerado.auditor, 40, 54);
+
+      // Columna Derecha (Calificación Global - Ajustado para evitar cortes)
+      doc.setFont("helvetica", "normal");
+      doc.text("Calificación Global:", 110, 48);
+
+      doc.setFont("helvetica", "bold");
+      let colorCalificacion = [225, 29, 72]; // Rojo
+      if (informeGenerado.score >= 90) colorCalificacion = [5, 150, 105]; // Verde
+      else if (informeGenerado.score >= 75) colorCalificacion = [37, 99, 235]; // Azul
+
+      doc.setTextColor(colorCalificacion[0], colorCalificacion[1], colorCalificacion[2]);
       
-      // Creamos un documento PDF tamaño A4
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4'
+      // Función splitTextToSize evita que el texto se salga del PDF si es muy largo
+      const scoreText = `${informeGenerado.score}/100 - ${informeGenerado.ranking}`;
+      const splitScore = doc.splitTextToSize(scoreText, 85); 
+      doc.text(splitScore, 110, 54); // Se imprime en Y=54 y baja automáticamente si hay más líneas
+
+      let finalY = 65; // Coordenada Y donde empiezan las tablas
+
+      // --- GENERADOR DE TABLAS MATEMÁTICAS ---
+      informeGenerado.puntos.forEach((punto: any) => {
+        
+        // Título del Punto de Control
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(10);
+        doc.setTextColor(15, 23, 42);
+        doc.text(punto.nombre, 14, finalY + 8);
+
+        // Armamos los datos
+        const tableData = punto.preguntas.map((preg: any, i: number) => [
+          `${i + 1}. ${preg.pregunta}`,
+          preg.hallazgo || 'Sin observación adicional',
+          preg.clasificacion,
+          preg.responsable || 'N/A'
+        ]);
+
+        // Dibujamos la tabla nativa
+        autoTable(doc, {
+          startY: finalY + 12,
+          head: [['Pregunta de Auditoría', 'Observación / Hallazgo', 'Estado', 'Responsable']],
+          body: tableData,
+          theme: 'grid',
+          // AQUI SE FUERZA EL TIPO DE LETRA "HELVETICA" Y TAMAÑO 8 PARA TODO
+          styles: { font: 'helvetica', fontSize: 8 }, 
+          headStyles: { fillColor: [30, 58, 138], textColor: 255, fontStyle: 'bold' },
+          bodyStyles: { textColor: 50 },
+          columnStyles: {
+            0: { cellWidth: 78 }, // Ajuste de milímetros
+            1: { cellWidth: 58 },
+            2: { cellWidth: 26, fontStyle: 'bold' },
+            3: { cellWidth: 26 }  // Más espacio para "Responsable"
+          },
+          didParseCell: function(data) {
+            if (data.section === 'body' && data.column.index === 2) {
+              if (data.cell.raw === 'Conformidad') data.cell.styles.textColor = [5, 150, 105];
+              else if (data.cell.raw === 'No aplica') data.cell.styles.textColor = [100, 116, 139];
+              else data.cell.styles.textColor = [225, 29, 72];
+            }
+          }
+        });
+
+        // Actualizamos la posición Y para el siguiente bloque
+        finalY = (doc as any).lastAutoTable.finalY + 5;
       });
 
-      // Calculamos las proporciones para que encaje perfecto
-      const imgProps = pdf.getImageProperties(dataUrl);
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+      // --- FIRMAS DINÁMICAS (Forzando tipografía Helvetica estricta) ---
+      if (finalY > 230) {
+        doc.addPage();
+        finalY = 20;
+      }
 
-      pdf.addImage(dataUrl, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      finalY += 30; // Espacio vertical para dibujar la línea
+      doc.setDrawColor(100, 116, 139);
+      doc.setLineWidth(0.3);
+      doc.line(30, finalY, 80, finalY);
+      doc.line(130, finalY, 180, finalY);
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9);
+      doc.setTextColor(15, 23, 42);
+      doc.text(informeGenerado.auditor, 55, finalY + 5, { align: 'center' });
+      doc.text("Coordinador de Calidad", 155, finalY + 5, { align: 'center' });
       
-      // Forzamos la descarga del archivo
-      pdf.save(`Informe_HOMI_${informeGenerado.flujo}_${informeGenerado.id}.pdf`);
-      
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(100, 116, 139);
+      doc.text("Auditor Concurrente", 55, finalY + 10, { align: 'center' });
+      doc.text("VoBo Institucional", 155, finalY + 10, { align: 'center' });
+
+      // Guardar PDF final
+      doc.save(`Informe_HOMI_${informeGenerado.flujo}_${informeGenerado.id}.pdf`);
+
     } catch (error) {
       console.error("Error al generar el PDF:", error);
       alert("Hubo un error al generar el documento.");
@@ -171,15 +294,15 @@ export default function InformeAuditoriaPage() {
             onClick={handleExportPDF}
             disabled={isExporting || !informeGenerado}
             className={`flex items-center space-x-2 px-6 py-3 rounded-xl font-bold transition-all shadow-md active:scale-95 ${
-              isExporting || !informeGenerado ? 'bg-slate-300 text-slate-500 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+              isExporting || !informeGenerado ? 'bg-slate-300 text-slate-500 cursor-not-allowed' : 'bg-blue-800 hover:bg-blue-900 text-white'
             }`}
           >
             {isExporting ? <Loader2 className="animate-spin" size={20} /> : <Download size={20} />}
-            <span>{isExporting ? 'Generando Archivo...' : 'Exportar a PDF'}</span>
+            <span>{isExporting ? 'Procesando Archivo...' : 'Descargar PDF Oficial'}</span>
           </button>
         </div>
 
-        {/* Filtros Actualizados */}
+        {/* Filtros */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-wrap gap-4 items-end">
           <div className="flex-1 min-w-[200px]">
             <label className="block text-sm font-semibold text-slate-700 mb-2">Flujo Core</label>
@@ -190,11 +313,11 @@ export default function InformeAuditoriaPage() {
                 onChange={(e) => setFlujoSeleccionado(e.target.value)}
                 className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-slate-300 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none appearance-none text-slate-900"
               >
-                <option value="Todos" className="text-slate-900">Todos los flujos</option>
-                <option value="Urgencias" className="text-slate-900">Urgencias</option>
-                <option value="Hospitalización" className="text-slate-900">Hospitalización</option>
-                <option value="Salas de cirugía" className="text-slate-900">Salas de cirugía</option>
-                <option value="Consulta Externa" className="text-slate-900">Consulta Externa</option>
+                <option value="Todos">Todos los flujos</option>
+                <option value="Urgencias">Urgencias</option>
+                <option value="Hospitalización">Hospitalización</option>
+                <option value="Salas de cirugía">Salas de cirugía</option>
+                <option value="Consulta Externa">Consulta Externa</option>
               </select>
             </div>
           </div>
@@ -216,26 +339,21 @@ export default function InformeAuditoriaPage() {
           <button 
             onClick={handleGenerarInforme}
             disabled={isGenerando}
-            className="bg-blue-800 hover:bg-blue-900 text-white px-8 py-2.5 rounded-lg font-bold shadow-md transition-colors h-[46px] flex items-center"
+            className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-2.5 rounded-lg font-bold shadow-md transition-colors h-[46px] flex items-center"
           >
-            {isGenerando ? <><Loader2 className="animate-spin mr-2" size={18} /> Buscando...</> : 'Generar Informe'}
+            {isGenerando ? <><Loader2 className="animate-spin mr-2" size={18} /> Buscando...</> : 'Visualizar Informe'}
           </button>
         </div>
       </div>
 
-      {/* --- VISTA PREVIA DEL DOCUMENTO --- */}
+      {/* --- VISTA PREVIA WEB --- */}
       {informeGenerado ? (
-        <div className="flex justify-center">
-          <div ref={informeRef} className="w-full max-w-[210mm] bg-white p-10 md:p-16 rounded-sm shadow-2xl border border-slate-300">
+        <div className="flex justify-center w-full">
+          <div className="w-full max-w-[216mm] bg-white p-8 md:p-12 rounded-sm shadow-2xl border border-slate-300 mx-auto">
             
-            {/* Cabecera del Documento CON LOGO OFICIAL */}
             <div className="border-b-2 border-slate-800 pb-8 mb-8 flex justify-between items-center">
               <div className="flex items-center space-x-6">
-                <img 
-                  src="/HOMI_LOGO.png" 
-                  alt="Logo HOMI" 
-                  style={{ width: '160px', height: '55px', objectFit: 'contain' }}
-                />
+                <img src="/HOMI_LOGO.png" alt="Logo HOMI" style={{ width: '160px', height: '55px', objectFit: 'contain' }}/>
                 <div className="border-l-2 border-slate-200 pl-6">
                   <h1 className="text-2xl font-bold text-slate-900 uppercase tracking-widest">Informe Oficial</h1>
                   <p className="text-slate-500 font-semibold">Sistema de Gestión de Calidad</p>
@@ -247,7 +365,6 @@ export default function InformeAuditoriaPage() {
               </div>
             </div>
 
-            {/* Resumen y Calificación (Ranking) */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
               <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
                 <p className="text-xs text-slate-500 font-bold uppercase mb-1">Flujo Auditado</p>
@@ -269,12 +386,11 @@ export default function InformeAuditoriaPage() {
               </div>
             </div>
 
-            {/* Detalle de Hallazgos */}
-            <div className="space-y-8">
+            <div className="space-y-6">
               <h3 className="text-xl font-bold text-slate-900 border-b border-slate-200 pb-2">Detalle de Puntos de Control</h3>
               
               {informeGenerado.puntos.map((punto: any, index: number) => (
-                <div key={index} className="mb-6">
+                <div key={index} className="mb-8">
                   <h4 className="text-lg font-bold text-blue-900 mb-4 bg-blue-50 px-4 py-2 rounded-md">{punto.nombre}</h4>
                   
                   <div className="space-y-4">
@@ -288,8 +404,14 @@ export default function InformeAuditoriaPage() {
                           </div>
                           <div>
                             <p className="text-sm text-slate-500 font-semibold mb-1">Clasificación</p>
-                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${item.clasificacion === 'Conformidad' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
-                              {item.clasificacion === 'Conformidad' ? <CheckCircle size={12} className="mr-1"/> : <XCircle size={12} className="mr-1"/>}
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                              item.clasificacion === 'Conformidad' ? 'bg-emerald-100 text-emerald-800' : 
+                              item.clasificacion === 'No aplica' ? 'bg-slate-200 text-slate-800' : 
+                              'bg-rose-100 text-rose-800'
+                            }`}>
+                              {item.clasificacion === 'Conformidad' ? <CheckCircle size={12} className="mr-1"/> : 
+                               item.clasificacion === 'No aplica' ? <AlertCircle size={12} className="mr-1"/> : 
+                               <XCircle size={12} className="mr-1"/>}
                               {item.clasificacion}
                             </span>
                             <p className="text-xs text-slate-500 mt-2"><span className="font-semibold">Responsable:</span> {item.responsable}</p>
@@ -302,7 +424,6 @@ export default function InformeAuditoriaPage() {
               ))}
             </div>
 
-            {/* Firmas */}
             <div className="mt-16 pt-8 border-t border-slate-200 grid grid-cols-2 gap-8 text-center pb-8">
               <div>
                 <div className="border-b border-slate-400 w-48 mx-auto mb-2"></div>
@@ -322,7 +443,7 @@ export default function InformeAuditoriaPage() {
         <div className="flex flex-col items-center justify-center p-20 bg-white rounded-2xl shadow-sm border border-slate-200 text-center">
           <FileText size={64} className="text-slate-200 mb-4" />
           <h3 className="text-2xl font-bold text-slate-700 mb-2">No hay un informe visible</h3>
-          <p className="text-slate-500 max-w-md">Ingrese el ID de una auditoría en la barra de búsqueda de arriba y presione "Generar Informe" para visualizar y exportar los resultados.</p>
+          <p className="text-slate-500 max-w-md">Ingrese el ID de una auditoría en la barra de búsqueda de arriba y presione "Visualizar Informe".</p>
         </div>
       )}
 

@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase'; // <-- Conexión a Supabase
+import { supabase } from '@/lib/supabase';
 import { 
   Search, 
   Filter, 
@@ -19,36 +19,51 @@ import {
   ChevronRight, 
   Hash, 
   CheckSquare2,
-  Loader2 // Agregamos Loader2 para los estados de carga
+  Loader2,
+  Trash2 // <-- NUEVO ICONO IMPORTADO
 } from 'lucide-react';
 
 export default function TorreControlPage() {
-  // --- NUEVOS ESTADOS PARA SUPABASE ---
   const [auditorias, setAuditorias] = useState<any[]>([]);
   const [cargando, setCargando] = useState(true);
+
+  // --- NUEVO: Estado para almacenar el rol del usuario ---
+  const [usuarioActual, setUsuarioActual] = useState({ rol: '' });
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filtroEstado, setFiltroEstado] = useState('Todos los Estados');
   
-  // Estados para los 3 Modales del Ciclo
+  // Estados para los Modales
   const [modalDetalle, setModalDetalle] = useState(false);
   const [modalFormular, setModalFormular] = useState(false);
   const [modalCerrar, setModalCerrar] = useState(false);
+  
+  // --- NUEVO: Estados para el Modal de Eliminar ---
+  const [modalEliminar, setModalEliminar] = useState(false);
+  const [auditoriaAEliminar, setAuditoriaAEliminar] = useState<any>(null);
+  const [cargandoEliminar, setCargandoEliminar] = useState(false);
   
   // Estados de datos activos
   const [auditoriaActiva, setAuditoriaActiva] = useState<any>(null);
   const [tabActivo, setTabActivo] = useState(0);
   const [codigoGenerado, setCodigoGenerado] = useState('');
 
-  // --- NUEVOS ESTADOS PARA DETALLES Y FORMULARIOS ---
+  // Estados para Detalles y Formularios
   const [detallesOjo, setDetallesOjo] = useState<any[]>([]);
   const [cargandoDetalles, setCargandoDetalles] = useState(false);
   const [formPlan, setFormPlan] = useState({ plan: '', responsable: '', fecha: '' });
   const [formCierre, setFormCierre] = useState({ actividades: '', evidencia: '' });
 
-  // 1. CARGAR DATOS DE SUPABASE AL INICIO
+  // 1. CARGAR DATOS DE SUPABASE Y ROL AL INICIO
   useEffect(() => {
     fetchAuditorias();
+    
+    // Validar quién está logueado
+    const userStr = localStorage.getItem('usuario_homi');
+    if (userStr) {
+      const userObj = JSON.parse(userStr);
+      setUsuarioActual({ rol: userObj.rol });
+    }
   }, []);
 
   const fetchAuditorias = async () => {
@@ -84,15 +99,19 @@ export default function TorreControlPage() {
 
   // FILTRO Y BÚSQUEDA
   const auditoriasFiltradas = auditorias.filter(a => {
-    const coincideBusqueda = a.codigo_auditoria?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                             a.paciente_id?.includes(searchTerm);
+    const termino = searchTerm.toLowerCase();
+    const coincideBusqueda = 
+      a.codigo_auditoria?.toLowerCase().includes(termino) || 
+      a.paciente_id?.includes(searchTerm) ||
+      a.paciente_nombre?.toLowerCase().includes(termino) ||
+      a.punto_control?.toLowerCase().includes(termino);
+      
     const coincideEstado = filtroEstado === 'Todos los Estados' || a.estado === filtroEstado;
     return coincideBusqueda && coincideEstado;
   });
 
   // --- FUNCIONES DE APERTURA DE MODALES CON SUPABASE ---
 
-  // 1. ABRIR EL OJO (CARGAR RESPUESTAS DE LA BD)
   const abrirModalDetalle = async (auditoria: any) => {
     setAuditoriaActiva(auditoria);
     setTabActivo(0);
@@ -108,7 +127,6 @@ export default function TorreControlPage() {
       if (error) throw error;
 
       if (data) {
-        // Agrupar respuestas por "Punto de Control" para crear las pestañas
         const agrupado = data.reduce((acc: any, curr: any) => {
           if (!acc[curr.punto_control]) acc[curr.punto_control] = [];
           acc[curr.punto_control].push(curr);
@@ -130,7 +148,6 @@ export default function TorreControlPage() {
     }
   };
 
-  // 2. ABRIR EL LÁPIZ Y GUARDAR PLAN DE ACCIÓN
   const abrirModalFormular = (auditoria: any) => {
     setAuditoriaActiva(auditoria);
     setCodigoGenerado(auditoria.codigo_accion || `HAL-${Math.floor(1000 + Math.random() * 9000)}`);
@@ -162,7 +179,6 @@ export default function TorreControlPage() {
     }
   };
 
-  // 3. ABRIR EL CHECK Y GUARDAR CIERRE
   const abrirModalCerrar = (auditoria: any) => {
     setAuditoriaActiva(auditoria);
     setFormCierre({ actividades: auditoria.actividades_cierre || '', evidencia: auditoria.evidencia_cierre || '' });
@@ -191,6 +207,44 @@ export default function TorreControlPage() {
     }
   };
 
+  // --- NUEVA FUNCIÓN: ELIMINAR AUDITORÍA (SOLO ADMIN) ---
+  const abrirModalEliminar = (auditoria: any) => {
+    setAuditoriaAEliminar(auditoria);
+    setModalEliminar(true);
+  };
+
+  const confirmarEliminacion = async () => {
+    setCargandoEliminar(true);
+    try {
+      // 1. Borrar primero las respuestas para no violar la integridad referencial (Foreign Key)
+      const { error: errorRespuestas } = await supabase
+        .from('auditoria_respuestas')
+        .delete()
+        .eq('auditoria_id', auditoriaAEliminar.id);
+      
+      if (errorRespuestas) throw errorRespuestas;
+
+      // 2. Borrar la auditoría principal
+      const { error: errorAuditoria } = await supabase
+        .from('auditorias')
+        .delete()
+        .eq('id', auditoriaAEliminar.id);
+
+      if (errorAuditoria) throw errorAuditoria;
+
+      // 3. Quitarla de la tabla local sin recargar la página
+      setAuditorias(auditorias.filter(a => a.id !== auditoriaAEliminar.id));
+      setModalEliminar(false);
+      setAuditoriaAEliminar(null);
+      
+    } catch (error) {
+      console.error('Error al eliminar:', error);
+      alert('Hubo un error al eliminar la auditoría. Revisa tu conexión.');
+    } finally {
+      setCargandoEliminar(false);
+    }
+  };
+
   return (
     <div className="p-8 lg:p-12 bg-slate-50 min-h-screen font-sans">
       
@@ -200,7 +254,7 @@ export default function TorreControlPage() {
         <p className="text-slate-600 mt-2 text-lg font-medium">Monitoreo en tiempo real y gestión de hallazgos institucionales.</p>
       </div>
 
-      {/* Grid de Estadísticas (RESTAURADO Y DINÁMICO) */}
+      {/* Grid de Estadísticas */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
         {stats.map((stat, i) => (
           <div key={i} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
@@ -222,7 +276,7 @@ export default function TorreControlPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
             <input 
               type="text" 
-              placeholder="Buscar por ID o Paciente..." 
+              placeholder="Buscar paciente, código o punto..." 
               className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none text-slate-900 bg-white"
               onChange={(e) => setSearchTerm(e.target.value)}
             />
@@ -258,6 +312,7 @@ export default function TorreControlPage() {
                   <th className="px-6 py-4">Auditoría</th>
                   <th className="px-6 py-4">Paciente</th>
                   <th className="px-6 py-4">Flujo</th>
+                  <th className="px-6 py-4">Punto de Control</th>
                   <th className="px-6 py-4 text-center">Hallazgos</th>
                   <th className="px-6 py-4">Estado</th>
                   <th className="px-6 py-4 text-center">Acciones</th>
@@ -267,8 +322,20 @@ export default function TorreControlPage() {
                 {auditoriasFiltradas.map((item) => (
                   <tr key={item.id} className="hover:bg-blue-50/30 transition-colors group">
                     <td className="px-6 py-4 font-bold text-slate-900">{item.codigo_auditoria}</td>
-                    <td className="px-6 py-4 text-slate-700 font-medium">{item.paciente_id}</td>
-                    <td className="px-6 py-4 text-slate-600">{item.flujo}</td>
+                    
+                    <td className="px-6 py-4">
+                      <p className="text-slate-700 font-bold">{item.paciente_id}</p>
+                      {item.paciente_nombre && (
+                        <p className="text-slate-500 text-xs mt-0.5">{item.paciente_nombre}</p>
+                      )}
+                    </td>
+                    
+                    <td className="px-6 py-4 text-slate-600 font-medium">{item.flujo}</td>
+                    
+                    <td className="px-6 py-4 text-slate-500 text-sm max-w-[200px] truncate" title={item.punto_control}>
+                      {item.punto_control || 'N/A'}
+                    </td>
+                    
                     <td className="px-6 py-4 text-center">
                       <span className={`px-2 py-1 rounded-md text-xs font-black ${item.cantidad_hallazgos > 0 ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-500'}`}>
                         {item.cantidad_hallazgos}
@@ -308,6 +375,17 @@ export default function TorreControlPage() {
                       >
                         <CheckSquare size={18} />
                       </button>
+
+                      {/* BOTÓN 4: ELIMINAR (Solo Administrador) */}
+                      {usuarioActual.rol === 'Administrador' && (
+                        <button 
+                          onClick={() => abrirModalEliminar(item)} 
+                          className="p-2 rounded-lg transition-all text-slate-300 hover:text-rose-600 hover:bg-rose-50" 
+                          title="Eliminar Auditoría (Solo Admin)"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      )}
 
                     </td>
                   </tr>
@@ -359,6 +437,8 @@ export default function TorreControlPage() {
                         <div className="flex items-center space-x-2">
                           {preg.clasificacion === 'Conformidad' ? (
                             <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold bg-emerald-100 text-emerald-700 border border-emerald-200"><CheckSquare size={14} className="mr-1" /> Conforme</span>
+                          ) : preg.clasificacion === 'No aplica' ? (
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold bg-slate-200 text-slate-700 border border-slate-300"><AlertCircle size={14} className="mr-1" /> No Aplica</span>
                           ) : (
                             <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold bg-rose-100 text-rose-700 border border-rose-200"><AlertTriangle size={14} className="mr-1" /> No Conforme</span>
                           )}
@@ -460,6 +540,41 @@ export default function TorreControlPage() {
             <div className="bg-slate-50 p-6 border-t flex justify-end gap-3">
               <button onClick={() => setModalCerrar(false)} className="px-6 py-2.5 text-slate-600 font-bold hover:bg-slate-200 rounded-xl">Cancelar</button>
               <button onClick={guardarCierre} className="bg-emerald-600 text-white px-8 py-2.5 rounded-xl font-bold hover:bg-emerald-700 shadow-md">Cerrar Hallazgo</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================== */}
+      {/* MODAL 4: CONFIRMAR ELIMINACIÓN (SOLO ADMIN)*/}
+      {/* ========================================== */}
+      {modalEliminar && auditoriaAEliminar && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-8 text-center">
+              <div className="w-20 h-20 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
+                <AlertTriangle size={40} strokeWidth={2.5} />
+              </div>
+              <h3 className="text-2xl font-extrabold text-slate-900 mb-3 tracking-tight">¿Eliminar Auditoría?</h3>
+              <p className="text-slate-600 mb-8 leading-relaxed">
+                Estás a punto de borrar permanentemente la auditoría <strong className="text-slate-800">{auditoriaAEliminar.codigo_auditoria}</strong>. Esta acción eliminará todas sus respuestas y no se puede deshacer.
+              </p>
+              <div className="flex justify-center gap-4">
+                <button 
+                  onClick={() => setModalEliminar(false)} 
+                  disabled={cargandoEliminar}
+                  className="px-6 py-3 text-slate-600 font-bold hover:bg-slate-100 rounded-xl transition-colors w-full"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  onClick={confirmarEliminacion} 
+                  disabled={cargandoEliminar}
+                  className="bg-rose-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-rose-700 shadow-md flex items-center justify-center transition-colors w-full"
+                >
+                  {cargandoEliminar ? <><Loader2 size={18} className="animate-spin mr-2"/> Borrando...</> : 'Sí, eliminar'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

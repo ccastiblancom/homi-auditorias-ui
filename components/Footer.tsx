@@ -11,7 +11,7 @@ export default function Footer() {
         <div className="flex items-center space-x-2 text-sm text-slate-500 font-medium">
           <ShieldCheck size={18} className="text-blue-600" />
           <span>
-            &copy; {anioActual} <strong className="text-blue-900">Hospital de la Misericordia</strong>. Todos los derechos reservados.
+            &copy; {anioActual} <strong className="text-blue-900">HOMI</strong>. Todos los derechos reservados.
           </span>
         </div>
 
