@@ -1,5 +1,6 @@
 'use client'
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { 
   Search, 
@@ -23,7 +24,7 @@ import {
   Trash2,
   Calendar,
   User,
-  Award // <-- Importamos el icono del premio para la calificación
+  Award 
 } from 'lucide-react';
 
 // --- FUNCIONES AUXILIARES DE FORMATO ---
@@ -42,16 +43,28 @@ const formatearNombreAuditor = (nombreCompleto: string) => {
   return nombreCompleto;
 };
 
-export default function TorreControlPage() {
+// --- COMPONENTE PRINCIPAL SEPARADO PARA SOPORTAR USE_SEARCH_PARAMS ---
+function TorreControlContent() {
+  const searchParams = useSearchParams();
+  const queryBuscador = searchParams.get('q') || '';
+
   const [auditorias, setAuditorias] = useState<any[]>([]);
   const [cargando, setCargando] = useState(true);
 
   // Estado para almacenar el rol del usuario
   const [usuarioActual, setUsuarioActual] = useState({ rol: '' });
 
-  const [searchTerm, setSearchTerm] = useState('');
+  // Iniciamos el término de búsqueda con lo que venga de la cabecera
+  const [searchTerm, setSearchTerm] = useState(queryBuscador);
   const [filtroEstado, setFiltroEstado] = useState('Todos los Estados');
   
+  // Actualizamos el buscador si el usuario hace una nueva búsqueda desde la cabecera estando en esta misma página
+  useEffect(() => {
+    if (queryBuscador) {
+      setSearchTerm(queryBuscador);
+    }
+  }, [queryBuscador]);
+
   // Estados para los Modales
   const [modalDetalle, setModalDetalle] = useState(false);
   const [modalFormular, setModalFormular] = useState(false);
@@ -67,7 +80,7 @@ export default function TorreControlPage() {
   const [tabActivo, setTabActivo] = useState(0);
   const [codigoGenerado, setCodigoGenerado] = useState('');
 
-  // --- NUEVO: ESTADOS PARA LA CALIFICACIÓN EN TIEMPO REAL ---
+  // Estados para LA CALIFICACIÓN EN TIEMPO REAL
   const [scoreActivo, setScoreActivo] = useState<number>(0);
   const [rankingActivo, setRankingActivo] = useState<string>('');
 
@@ -134,7 +147,6 @@ export default function TorreControlPage() {
   });
 
   // --- FUNCIONES DE APERTURA DE MODALES CON SUPABASE ---
-
   const abrirModalDetalle = async (auditoria: any) => {
     setAuditoriaActiva(auditoria);
     setTabActivo(0);
@@ -310,6 +322,7 @@ export default function TorreControlPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
             <input 
               type="text" 
+              value={searchTerm} // <-- AHORA SE REFLEJA LO QUE SE BUSCÓ EN LA CABECERA
               placeholder="Buscar auditor, código, paciente..." 
               className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none text-slate-900 bg-white"
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -337,7 +350,7 @@ export default function TorreControlPage() {
              </div>
           ) : auditoriasFiltradas.length === 0 ? (
              <div className="text-center p-16 text-slate-500 font-medium">
-               No se encontraron auditorías registradas.
+               No se encontraron auditorías registradas con ese criterio.
              </div>
           ) : (
             <table className="w-full text-left border-collapse min-w-[1200px]">
@@ -447,7 +460,6 @@ export default function TorreControlPage() {
               </div>
               
               <div className="flex items-center space-x-6">
-                {/* NUEVO: SECCIÓN DE CALIFICACIÓN (Solo visible si hay datos) */}
                 {!cargandoDetalles && detallesOjo.length > 0 && (
                   <div className="hidden sm:flex flex-col items-end border-r border-slate-700 pr-6">
                     <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest mb-1 flex items-center">
@@ -466,7 +478,6 @@ export default function TorreControlPage() {
                   </div>
                 )}
                 
-                {/* Botón Cerrar */}
                 <button onClick={() => setModalDetalle(false)} className="text-slate-400 hover:text-white transition-colors">
                   <X size={24} />
                 </button>
@@ -632,5 +643,18 @@ export default function TorreControlPage() {
         </div>
       )}
     </div>
+  );
+}
+
+// Exportamos el componente envuelto en Suspense como exige Next.js 13+
+export default function TorreControlPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex justify-center items-center h-screen bg-slate-50">
+        <Loader2 className="animate-spin text-blue-500" size={40} />
+      </div>
+    }>
+      <TorreControlContent />
+    </Suspense>
   );
 }
