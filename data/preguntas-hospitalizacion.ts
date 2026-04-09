@@ -104,3 +104,21 @@ export const flujoHospitalizacion = {
     }
   ]
 };
+// --- INYECCIÓN AUTOMÁTICA DE PACIENTE TRAZADOR HOSPITALIZACIÓN ---
+const preguntasTrazadorHospitalizacion: any[] = [];
+
+for (let i = 0; i <= 2; i++) {
+  if (flujoHospitalizacion.puntosControl[i]) {
+    const nombrePunto = flujoHospitalizacion.puntosControl[i].nombre;
+    const preguntasConEtiqueta = flujoHospitalizacion.puntosControl[i].preguntas.map((p: any) => ({
+      ...p,
+      pregunta: `[${nombrePunto}] ${p.pregunta}`
+    }));
+    preguntasTrazadorHospitalizacion.push(...preguntasConEtiqueta);
+  }
+}
+
+flujoHospitalizacion.puntosControl.push({
+  nombre: "Paciente trazador Hospitalización",
+  preguntas: preguntasTrazadorHospitalizacion
+});

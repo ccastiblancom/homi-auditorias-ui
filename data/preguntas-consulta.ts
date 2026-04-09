@@ -209,3 +209,38 @@ export const flujoConsulta = {
     }
   ]
 };
+// --- INYECCIÓN AUTOMÁTICA DE PACIENTES TRAZADORES CONSULTA EXTERNA ---
+
+// 1. Paciente Trazador Consulta (Puntos 1 al 5)
+const preguntasTrazadorConsulta: any[] = [];
+for (let i = 0; i <= 4; i++) {
+  if (flujoConsulta.puntosControl[i]) {
+    const nombrePunto = flujoConsulta.puntosControl[i].nombre;
+    const preguntasConEtiqueta = flujoConsulta.puntosControl[i].preguntas.map((p: any) => ({
+      ...p,
+      pregunta: `[${nombrePunto}] ${p.pregunta}`
+    }));
+    preguntasTrazadorConsulta.push(...preguntasConEtiqueta);
+  }
+}
+flujoConsulta.puntosControl.push({
+  nombre: "Paciente trazador Consulta",
+  preguntas: preguntasTrazadorConsulta
+});
+
+// 2. Paciente Trazador Consulta Oncológica (Puntos 1 al 6)
+const preguntasTrazadorOncologica: any[] = [];
+for (let i = 0; i <= 5; i++) {
+  if (flujoConsulta.puntosControl[i]) {
+    const nombrePunto = flujoConsulta.puntosControl[i].nombre;
+    const preguntasConEtiqueta = flujoConsulta.puntosControl[i].preguntas.map((p: any) => ({
+      ...p,
+      pregunta: `[${nombrePunto}] ${p.pregunta}`
+    }));
+    preguntasTrazadorOncologica.push(...preguntasConEtiqueta);
+  }
+}
+flujoConsulta.puntosControl.push({
+  nombre: "Paciente trazador Consulta Oncológica",
+  preguntas: preguntasTrazadorOncologica
+});

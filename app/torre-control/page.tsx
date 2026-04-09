@@ -20,14 +20,33 @@ import {
   Hash, 
   CheckSquare2,
   Loader2,
-  Trash2 // <-- NUEVO ICONO IMPORTADO
+  Trash2,
+  Calendar,
+  User,
+  Award // <-- Importamos el icono del premio para la calificación
 } from 'lucide-react';
+
+// --- FUNCIONES AUXILIARES DE FORMATO ---
+const formatearFecha = (fechaISO: string) => {
+  if (!fechaISO) return 'N/A';
+  const fecha = new Date(fechaISO);
+  return fecha.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' });
+};
+
+const formatearNombreAuditor = (nombreCompleto: string) => {
+  if (!nombreCompleto) return 'No registrado';
+  const partes = nombreCompleto.trim().split(' ');
+  if (partes.length >= 2) {
+    return `${partes[0]} ${partes[1]}`; 
+  }
+  return nombreCompleto;
+};
 
 export default function TorreControlPage() {
   const [auditorias, setAuditorias] = useState<any[]>([]);
   const [cargando, setCargando] = useState(true);
 
-  // --- NUEVO: Estado para almacenar el rol del usuario ---
+  // Estado para almacenar el rol del usuario
   const [usuarioActual, setUsuarioActual] = useState({ rol: '' });
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -38,7 +57,7 @@ export default function TorreControlPage() {
   const [modalFormular, setModalFormular] = useState(false);
   const [modalCerrar, setModalCerrar] = useState(false);
   
-  // --- NUEVO: Estados para el Modal de Eliminar ---
+  // Estados para el Modal de Eliminar
   const [modalEliminar, setModalEliminar] = useState(false);
   const [auditoriaAEliminar, setAuditoriaAEliminar] = useState<any>(null);
   const [cargandoEliminar, setCargandoEliminar] = useState(false);
@@ -47,6 +66,10 @@ export default function TorreControlPage() {
   const [auditoriaActiva, setAuditoriaActiva] = useState<any>(null);
   const [tabActivo, setTabActivo] = useState(0);
   const [codigoGenerado, setCodigoGenerado] = useState('');
+
+  // --- NUEVO: ESTADOS PARA LA CALIFICACIÓN EN TIEMPO REAL ---
+  const [scoreActivo, setScoreActivo] = useState<number>(0);
+  const [rankingActivo, setRankingActivo] = useState<string>('');
 
   // Estados para Detalles y Formularios
   const [detallesOjo, setDetallesOjo] = useState<any[]>([]);
@@ -58,7 +81,6 @@ export default function TorreControlPage() {
   useEffect(() => {
     fetchAuditorias();
     
-    // Validar quién está logueado
     const userStr = localStorage.getItem('usuario_homi');
     if (userStr) {
       const userObj = JSON.parse(userStr);
@@ -104,7 +126,8 @@ export default function TorreControlPage() {
       a.codigo_auditoria?.toLowerCase().includes(termino) || 
       a.paciente_id?.includes(searchTerm) ||
       a.paciente_nombre?.toLowerCase().includes(termino) ||
-      a.punto_control?.toLowerCase().includes(termino);
+      a.punto_control?.toLowerCase().includes(termino) ||
+      a.auditor_nombre?.toLowerCase().includes(termino);
       
     const coincideEstado = filtroEstado === 'Todos los Estados' || a.estado === filtroEstado;
     return coincideBusqueda && coincideEstado;
@@ -115,6 +138,8 @@ export default function TorreControlPage() {
   const abrirModalDetalle = async (auditoria: any) => {
     setAuditoriaActiva(auditoria);
     setTabActivo(0);
+    setScoreActivo(0);       // Reiniciamos score anterior
+    setRankingActivo('');    // Reiniciamos ranking anterior
     setModalDetalle(true);
     setCargandoDetalles(true);
 
@@ -127,6 +152,19 @@ export default function TorreControlPage() {
       if (error) throw error;
 
       if (data) {
+        // --- CÁLCULO DE LA CALIFICACIÓN EN TIEMPO REAL ---
+        const preguntasAplica = data.filter((r: any) => r.clasificacion !== 'No aplica').length || 0;
+        const conformidades = data.filter((r: any) => r.clasificacion === 'Conformidad').length || 0;
+        const calculoScore = preguntasAplica > 0 ? Math.round((conformidades / preguntasAplica) * 100) : 0;
+        
+        setScoreActivo(calculoScore);
+        
+        let textoRanking = 'Crítico';
+        if (calculoScore >= 90) textoRanking = 'Excelente';
+        else if (calculoScore >= 75) textoRanking = 'Aceptable';
+        setRankingActivo(textoRanking);
+
+        // Agrupar pestañas
         const agrupado = data.reduce((acc: any, curr: any) => {
           if (!acc[curr.punto_control]) acc[curr.punto_control] = [];
           acc[curr.punto_control].push(curr);
@@ -207,7 +245,6 @@ export default function TorreControlPage() {
     }
   };
 
-  // --- NUEVA FUNCIÓN: ELIMINAR AUDITORÍA (SOLO ADMIN) ---
   const abrirModalEliminar = (auditoria: any) => {
     setAuditoriaAEliminar(auditoria);
     setModalEliminar(true);
@@ -216,7 +253,6 @@ export default function TorreControlPage() {
   const confirmarEliminacion = async () => {
     setCargandoEliminar(true);
     try {
-      // 1. Borrar primero las respuestas para no violar la integridad referencial (Foreign Key)
       const { error: errorRespuestas } = await supabase
         .from('auditoria_respuestas')
         .delete()
@@ -224,7 +260,6 @@ export default function TorreControlPage() {
       
       if (errorRespuestas) throw errorRespuestas;
 
-      // 2. Borrar la auditoría principal
       const { error: errorAuditoria } = await supabase
         .from('auditorias')
         .delete()
@@ -232,7 +267,6 @@ export default function TorreControlPage() {
 
       if (errorAuditoria) throw errorAuditoria;
 
-      // 3. Quitarla de la tabla local sin recargar la página
       setAuditorias(auditorias.filter(a => a.id !== auditoriaAEliminar.id));
       setModalEliminar(false);
       setAuditoriaAEliminar(null);
@@ -276,7 +310,7 @@ export default function TorreControlPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
             <input 
               type="text" 
-              placeholder="Buscar paciente, código o punto..." 
+              placeholder="Buscar auditor, código, paciente..." 
               className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none text-slate-900 bg-white"
               onChange={(e) => setSearchTerm(e.target.value)}
             />
@@ -306,9 +340,11 @@ export default function TorreControlPage() {
                No se encontraron auditorías registradas.
              </div>
           ) : (
-            <table className="w-full text-left border-collapse">
+            <table className="w-full text-left border-collapse min-w-[1200px]">
               <thead>
                 <tr className="bg-slate-50 text-slate-500 text-xs font-bold uppercase tracking-widest border-b border-slate-200">
+                  <th className="px-6 py-4 whitespace-nowrap">Fecha</th>
+                  <th className="px-6 py-4 whitespace-nowrap">Auditor</th>
                   <th className="px-6 py-4">Auditoría</th>
                   <th className="px-6 py-4">Paciente</th>
                   <th className="px-6 py-4">Flujo</th>
@@ -321,21 +357,29 @@ export default function TorreControlPage() {
               <tbody className="divide-y divide-slate-100">
                 {auditoriasFiltradas.map((item) => (
                   <tr key={item.id} className="hover:bg-blue-50/30 transition-colors group">
+                    <td className="px-6 py-4 whitespace-nowrap text-slate-500 text-sm font-medium">
+                      <div className="flex items-center">
+                        <Calendar size={14} className="mr-2 opacity-70"/>
+                        {formatearFecha(item.fecha_creacion)}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-slate-700 text-sm font-bold">
+                      <div className="flex items-center">
+                        <User size={14} className="mr-2 text-blue-500"/>
+                        {formatearNombreAuditor(item.auditor_nombre)}
+                      </div>
+                    </td>
                     <td className="px-6 py-4 font-bold text-slate-900">{item.codigo_auditoria}</td>
-                    
                     <td className="px-6 py-4">
                       <p className="text-slate-700 font-bold">{item.paciente_id}</p>
                       {item.paciente_nombre && (
                         <p className="text-slate-500 text-xs mt-0.5">{item.paciente_nombre}</p>
                       )}
                     </td>
-                    
                     <td className="px-6 py-4 text-slate-600 font-medium">{item.flujo}</td>
-                    
                     <td className="px-6 py-4 text-slate-500 text-sm max-w-[200px] truncate" title={item.punto_control}>
                       {item.punto_control || 'N/A'}
                     </td>
-                    
                     <td className="px-6 py-4 text-center">
                       <span className={`px-2 py-1 rounded-md text-xs font-black ${item.cantidad_hallazgos > 0 ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-500'}`}>
                         {item.cantidad_hallazgos}
@@ -350,13 +394,9 @@ export default function TorreControlPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-center space-x-1 flex justify-center">
-                      
-                      {/* BOTÓN 1: VER (Ojo) */}
                       <button onClick={() => abrirModalDetalle(item)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all" title="Ver Resultados">
                         <Eye size={18} />
                       </button>
-                      
-                      {/* BOTÓN 2: FORMULAR PLAN (Lápiz Naranja) */}
                       <button 
                         onClick={() => abrirModalFormular(item)} 
                         className={`p-2 rounded-lg transition-all ${item.cantidad_hallazgos > 0 && item.estado === 'Pendiente' ? 'text-amber-500 hover:bg-amber-50' : 'text-slate-300 cursor-not-allowed'}`} 
@@ -365,8 +405,6 @@ export default function TorreControlPage() {
                       >
                         <Edit3 size={18} />
                       </button>
-
-                      {/* BOTÓN 3: CERRAR HALLAZGO (Check Verde) */}
                       <button 
                         onClick={() => abrirModalCerrar(item)} 
                         className={`p-2 rounded-lg transition-all ${item.estado === 'En proceso' ? 'text-emerald-500 hover:bg-emerald-50' : 'text-slate-300 cursor-not-allowed'}`} 
@@ -375,8 +413,6 @@ export default function TorreControlPage() {
                       >
                         <CheckSquare size={18} />
                       </button>
-
-                      {/* BOTÓN 4: ELIMINAR (Solo Administrador) */}
                       {usuarioActual.rol === 'Administrador' && (
                         <button 
                           onClick={() => abrirModalEliminar(item)} 
@@ -386,7 +422,6 @@ export default function TorreControlPage() {
                           <Trash2 size={18} />
                         </button>
                       )}
-
                     </td>
                   </tr>
                 ))}
@@ -396,12 +431,12 @@ export default function TorreControlPage() {
         </div>
       </div>
 
-      {/* ========================================== */}
-      {/* MODAL 1: VER DETALLES (EL OJO)             */}
-      {/* ========================================== */}
+      {/* MODAL 1: VER DETALLES */}
       {modalDetalle && auditoriaActiva && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl h-[80vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            
+            {/* CABECERA DEL MODAL CON CALIFICACIÓN */}
             <div className="bg-slate-900 p-6 text-white flex justify-between items-center shrink-0">
               <div className="flex items-center space-x-3">
                 <FileText className="text-blue-400" size={24} />
@@ -410,9 +445,32 @@ export default function TorreControlPage() {
                   <p className="text-slate-400 text-sm">Cód: {auditoriaActiva.codigo_auditoria} • Flujo: {auditoriaActiva.flujo}</p>
                 </div>
               </div>
-              <button onClick={() => setModalDetalle(false)} className="text-slate-400 hover:text-white transition-colors">
-                <X size={24} />
-              </button>
+              
+              <div className="flex items-center space-x-6">
+                {/* NUEVO: SECCIÓN DE CALIFICACIÓN (Solo visible si hay datos) */}
+                {!cargandoDetalles && detallesOjo.length > 0 && (
+                  <div className="hidden sm:flex flex-col items-end border-r border-slate-700 pr-6">
+                    <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest mb-1 flex items-center">
+                      <Award size={12} className="mr-1" /> Calificación Global
+                    </p>
+                    <div className="flex items-center space-x-2">
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded ${
+                        scoreActivo >= 90 ? 'bg-emerald-500/20 text-emerald-400' : 
+                        scoreActivo >= 75 ? 'bg-blue-500/20 text-blue-400' : 
+                        'bg-rose-500/20 text-rose-400'
+                      }`}>
+                        {rankingActivo}
+                      </span>
+                      <span className="text-2xl font-black">{scoreActivo}<span className="opacity-50 text-base">/100</span></span>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Botón Cerrar */}
+                <button onClick={() => setModalDetalle(false)} className="text-slate-400 hover:text-white transition-colors">
+                  <X size={24} />
+                </button>
+              </div>
             </div>
             
             {cargandoDetalles ? (
@@ -460,9 +518,7 @@ export default function TorreControlPage() {
         </div>
       )}
 
-      {/* ========================================== */}
-      {/* MODAL 2: FORMULAR PLAN (EL LÁPIZ)          */}
-      {/* ========================================== */}
+      {/* MODAL 2: FORMULAR PLAN */}
       {modalFormular && auditoriaActiva && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
@@ -502,9 +558,7 @@ export default function TorreControlPage() {
         </div>
       )}
 
-      {/* ========================================== */}
-      {/* MODAL 3: EJECUTAR Y CERRAR (EL CHECK)      */}
-      {/* ========================================== */}
+      {/* MODAL 3: EJECUTAR Y CERRAR */}
       {modalCerrar && auditoriaActiva && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
@@ -545,9 +599,7 @@ export default function TorreControlPage() {
         </div>
       )}
 
-      {/* ========================================== */}
-      {/* MODAL 4: CONFIRMAR ELIMINACIÓN (SOLO ADMIN)*/}
-      {/* ========================================== */}
+      {/* MODAL 4: CONFIRMAR ELIMINACIÓN */}
       {modalEliminar && auditoriaAEliminar && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">

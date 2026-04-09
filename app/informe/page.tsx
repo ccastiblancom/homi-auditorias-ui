@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -13,7 +13,8 @@ import {
   Award,
   Loader2,
   Search,
-  AlertCircle
+  AlertCircle,
+  Hash
 } from 'lucide-react';
 
 // --- FUNCIÓN AUXILIAR PARA CARGAR EL LOGO COMO BASE64 ---
@@ -28,18 +29,61 @@ const getBase64ImageFromUrl = async (imageUrl: string): Promise<string> => {
   });
 };
 
+// --- FUNCIÓN PARA NORMALIZAR TEXTOS (Quita tildes, espacios y mayúsculas) ---
+const normalizarTexto = (texto: string) => {
+  if (!texto) return '';
+  return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+};
+
+// --- NUEVO: FUNCIÓN PARA FORMATEAR EL ID (Ej: AUD-1234 -> Aud-1234) ---
+const formatearIdVisual = (id: string) => {
+  if (!id) return '';
+  return id.charAt(0).toUpperCase() + id.slice(1).toLowerCase();
+};
+
 export default function InformeAuditoriaPage() {
   const [flujoSeleccionado, setFlujoSeleccionado] = useState('Todos');
   const [informeId, setInformeId] = useState('');
   
+  const [listaAuditorias, setListaAuditorias] = useState<any[]>([]);
   const [informeGenerado, setInformeGenerado] = useState<any>(null);
   const [isGenerando, setIsGenerando] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
-  // --- FUNCIÓN PARA CONSULTAR SUPABASE Y GENERAR INFORME (VISTA WEB) ---
+  // CARGAR LA LISTA DE IDs AL ENTRAR A LA PÁGINA
+  useEffect(() => {
+    const fetchListaAuditorias = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('auditorias')
+          .select('codigo_auditoria, flujo')
+          .order('fecha_creacion', { ascending: false });
+
+        if (error) throw error;
+        if (data) setListaAuditorias(data);
+      } catch (error) {
+        console.error('Error cargando la lista de auditorías:', error);
+      }
+    };
+    fetchListaAuditorias();
+  }, []);
+
+  // --- SOLUCIÓN DEL FILTRO: AHORA USA .includes() EN LUGAR DE COINCIDENCIA EXACTA ---
+  const informesDisponibles = listaAuditorias.filter(a => {
+    if (flujoSeleccionado === 'Todos') return true;
+    if (!a.flujo) return false;
+    
+    const flujoBD = normalizarTexto(a.flujo);
+    const flujoFiltro = normalizarTexto(flujoSeleccionado);
+    
+    // Esto permite que "Urgencias" coincida con "Auditoría de Urgencias"
+    return flujoBD.includes(flujoFiltro);
+  });
+
+  // FUNCIÓN PARA CONSULTAR SUPABASE Y GENERAR INFORME
   const handleGenerarInforme = async () => {
     if (!informeId) {
-      alert("Por favor, ingrese el ID del informe (Ej: AUD-10245)");
+      alert("Por favor, seleccione un ID de informe de la lista.");
       return;
     }
 
@@ -114,14 +158,13 @@ export default function InformeAuditoriaPage() {
     }
   };
 
-  // --- MAGIA: MOTOR DE PDF NATIVO CON ESTILOS CORREGIDOS ---
+  // MOTOR DE PDF NATIVO
   const handleExportPDF = async () => {
     setIsExporting(true);
 
     try {
       const doc = new jsPDF({ format: 'letter' });
 
-      // Cargar el Logo (si falla, no rompe la descarga)
       let logoBase64 = null;
       try {
         logoBase64 = await getBase64ImageFromUrl('/HOMI_LOGO.png');
@@ -129,9 +172,7 @@ export default function InformeAuditoriaPage() {
         console.warn("No se pudo cargar el logo para el PDF.");
       }
 
-      // --- CABECERA CORPORATIVA ---
       if (logoBase64) {
-        // x: 14, y: 15, ancho: 40, alto: 14
         doc.addImage(logoBase64, 'PNG', 14, 15, 40, 14);
       } else {
         doc.setFont("helvetica", "bold");
@@ -140,35 +181,30 @@ export default function InformeAuditoriaPage() {
         doc.text("HOMI", 14, 25);
       }
 
-      // Títulos Centrales
       doc.setFont("helvetica", "bold");
       doc.setFontSize(12);
       doc.setTextColor(15, 23, 42); 
       doc.text("INFORME OFICIAL DE AUDITORÍA", 60, 20);
 
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(9); // Reducido para mejor proporción
+      doc.setFontSize(9);
       doc.setTextColor(100, 116, 139);
       doc.text("Sistema de Gestión de Calidad", 60, 25);
 
-      // Datos a la Derecha
       doc.setFontSize(9);
       doc.setTextColor(15, 23, 42);
       doc.text(`ID Informe: ${informeGenerado.id}`, 155, 20);
       doc.text(`Fecha: ${informeGenerado.fecha}`, 155, 25);
 
-      // Línea separadora
       doc.setDrawColor(203, 213, 225); 
       doc.setLineWidth(0.5);
       doc.line(14, 32, 202, 32);
 
-      // --- RESUMEN DE CALIFICACIÓN ---
       doc.setFont("helvetica", "bold");
       doc.setFontSize(11);
       doc.setTextColor(30, 58, 138);
       doc.text("Resumen de Calificación", 14, 40);
 
-      // Columna Izquierda
       doc.setFont("helvetica", "normal");
       doc.setFontSize(9);
       doc.setTextColor(15, 23, 42);
@@ -181,34 +217,28 @@ export default function InformeAuditoriaPage() {
       doc.setFont("helvetica", "bold");
       doc.text(informeGenerado.auditor, 40, 54);
 
-      // Columna Derecha (Calificación Global - Ajustado para evitar cortes)
       doc.setFont("helvetica", "normal");
       doc.text("Calificación Global:", 110, 48);
 
       doc.setFont("helvetica", "bold");
-      let colorCalificacion = [225, 29, 72]; // Rojo
-      if (informeGenerado.score >= 90) colorCalificacion = [5, 150, 105]; // Verde
-      else if (informeGenerado.score >= 75) colorCalificacion = [37, 99, 235]; // Azul
+      let colorCalificacion = [225, 29, 72]; 
+      if (informeGenerado.score >= 90) colorCalificacion = [5, 150, 105]; 
+      else if (informeGenerado.score >= 75) colorCalificacion = [37, 99, 235]; 
 
       doc.setTextColor(colorCalificacion[0], colorCalificacion[1], colorCalificacion[2]);
       
-      // Función splitTextToSize evita que el texto se salga del PDF si es muy largo
       const scoreText = `${informeGenerado.score}/100 - ${informeGenerado.ranking}`;
       const splitScore = doc.splitTextToSize(scoreText, 85); 
-      doc.text(splitScore, 110, 54); // Se imprime en Y=54 y baja automáticamente si hay más líneas
+      doc.text(splitScore, 110, 54); 
 
-      let finalY = 65; // Coordenada Y donde empiezan las tablas
+      let finalY = 65; 
 
-      // --- GENERADOR DE TABLAS MATEMÁTICAS ---
       informeGenerado.puntos.forEach((punto: any) => {
-        
-        // Título del Punto de Control
         doc.setFont("helvetica", "bold");
         doc.setFontSize(10);
         doc.setTextColor(15, 23, 42);
         doc.text(punto.nombre, 14, finalY + 8);
 
-        // Armamos los datos
         const tableData = punto.preguntas.map((preg: any, i: number) => [
           `${i + 1}. ${preg.pregunta}`,
           preg.hallazgo || 'Sin observación adicional',
@@ -216,21 +246,19 @@ export default function InformeAuditoriaPage() {
           preg.responsable || 'N/A'
         ]);
 
-        // Dibujamos la tabla nativa
         autoTable(doc, {
           startY: finalY + 12,
           head: [['Pregunta de Auditoría', 'Observación / Hallazgo', 'Estado', 'Responsable']],
           body: tableData,
           theme: 'grid',
-          // AQUI SE FUERZA EL TIPO DE LETRA "HELVETICA" Y TAMAÑO 8 PARA TODO
           styles: { font: 'helvetica', fontSize: 8 }, 
           headStyles: { fillColor: [30, 58, 138], textColor: 255, fontStyle: 'bold' },
           bodyStyles: { textColor: 50 },
           columnStyles: {
-            0: { cellWidth: 78 }, // Ajuste de milímetros
+            0: { cellWidth: 78 },
             1: { cellWidth: 58 },
             2: { cellWidth: 26, fontStyle: 'bold' },
-            3: { cellWidth: 26 }  // Más espacio para "Responsable"
+            3: { cellWidth: 26 }  
           },
           didParseCell: function(data) {
             if (data.section === 'body' && data.column.index === 2) {
@@ -241,17 +269,15 @@ export default function InformeAuditoriaPage() {
           }
         });
 
-        // Actualizamos la posición Y para el siguiente bloque
         finalY = (doc as any).lastAutoTable.finalY + 5;
       });
 
-      // --- FIRMAS DINÁMICAS (Forzando tipografía Helvetica estricta) ---
       if (finalY > 230) {
         doc.addPage();
         finalY = 20;
       }
 
-      finalY += 30; // Espacio vertical para dibujar la línea
+      finalY += 30; 
       doc.setDrawColor(100, 116, 139);
       doc.setLineWidth(0.3);
       doc.line(30, finalY, 80, finalY);
@@ -268,7 +294,6 @@ export default function InformeAuditoriaPage() {
       doc.text("Auditor Concurrente", 55, finalY + 10, { align: 'center' });
       doc.text("VoBo Institucional", 155, finalY + 10, { align: 'center' });
 
-      // Guardar PDF final
       doc.save(`Informe_HOMI_${informeGenerado.flujo}_${informeGenerado.id}.pdf`);
 
     } catch (error) {
@@ -282,7 +307,6 @@ export default function InformeAuditoriaPage() {
   return (
     <div className="min-h-screen bg-slate-100 p-8 font-sans">
       
-      {/* --- PANEL SUPERIOR --- */}
       <div className="max-w-7xl mx-auto mb-8">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
           <div>
@@ -302,7 +326,6 @@ export default function InformeAuditoriaPage() {
           </button>
         </div>
 
-        {/* Filtros */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-wrap gap-4 items-end">
           <div className="flex-1 min-w-[200px]">
             <label className="block text-sm font-semibold text-slate-700 mb-2">Flujo Core</label>
@@ -310,8 +333,11 @@ export default function InformeAuditoriaPage() {
               <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" size={18} />
               <select 
                 value={flujoSeleccionado}
-                onChange={(e) => setFlujoSeleccionado(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-slate-300 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none appearance-none text-slate-900"
+                onChange={(e) => {
+                  setFlujoSeleccionado(e.target.value);
+                  setInformeId(''); 
+                }}
+                className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-slate-300 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none appearance-none text-slate-900 cursor-pointer"
               >
                 <option value="Todos">Todos los flujos</option>
                 <option value="Urgencias">Urgencias</option>
@@ -325,14 +351,21 @@ export default function InformeAuditoriaPage() {
           <div className="flex-1 min-w-[250px]">
             <label className="block text-sm font-semibold text-slate-700 mb-2">ID del Informe</label>
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" size={18} />
-              <input 
-                type="text" 
-                placeholder="Ej: AUD-12345"
+              <Hash className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" size={18} />
+              {/* --- ELIMINADA LA CLASE "font-semibold" PARA QUITAR LA NEGRILLA --- */}
+              <select 
                 value={informeId}
                 onChange={(e) => setInformeId(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-slate-300 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none text-slate-900 uppercase" 
-              />
+                className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-slate-300 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none appearance-none text-slate-900 cursor-pointer" 
+              >
+                <option value="">Seleccione un informe...</option>
+                {informesDisponibles.map((auditoria, index) => (
+                  <option key={index} value={auditoria.codigo_auditoria}>
+                    {/* --- APLICA EL NUEVO FORMATO DE TEXTO (Ej: Aud-1234) --- */}
+                    {formatearIdVisual(auditoria.codigo_auditoria)}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
@@ -443,7 +476,7 @@ export default function InformeAuditoriaPage() {
         <div className="flex flex-col items-center justify-center p-20 bg-white rounded-2xl shadow-sm border border-slate-200 text-center">
           <FileText size={64} className="text-slate-200 mb-4" />
           <h3 className="text-2xl font-bold text-slate-700 mb-2">No hay un informe visible</h3>
-          <p className="text-slate-500 max-w-md">Ingrese el ID de una auditoría en la barra de búsqueda de arriba y presione "Visualizar Informe".</p>
+          <p className="text-slate-500 max-w-md">Seleccione un Flujo Core y luego elija un código de auditoría de la lista para visualizar y descargar el informe oficial.</p>
         </div>
       )}
 
