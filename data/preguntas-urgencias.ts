@@ -71,7 +71,7 @@ export const flujoUrgencias = {
           criterio: 'El intervalo de tiempo no debe exceder los 15 minutos.'
         },
         {
-          pregunta: '¿Existe evidencia de seguimiento médico presencial al paciente durante el periodo de espera de los resultados paraclínicos?',
+          pregunta: '¿Existe evidencia de seguimiento por parte de la auxiliar administradora de consultorios al paciente durante el periodo de espera de los resultados paraclínicos?',
           prueba: 'Revisión de la Tasa de Revaloración (68%) mediante la búsqueda de notas de evolución médica registradas en la Historia Clínica posteriores a la toma de muestras.',
           criterio: 'Al menos el 80% de los pacientes en espera de resultados deben contar con una nota de revaloración.'
         },

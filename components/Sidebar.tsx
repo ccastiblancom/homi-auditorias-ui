@@ -10,7 +10,8 @@ import {
   Settings, 
   LogOut, 
   ChevronLeft, 
-  ChevronRight 
+  ChevronRight,
+  PieChart // <-- Añadimos el nuevo icono para el Dashboard
 } from 'lucide-react'
 
 export default function Sidebar() {
@@ -49,15 +50,17 @@ export default function Sidebar() {
   };
 
   // --- LÓGICA DE PERMISOS (RBAC) ---
-  // Estos 3 módulos los ven TODOS los roles (Coordinador, Auditor, Ingeniero, Admin)
+  // Estos módulos los ven TODOS los roles
   const baseNavItems = [
     { href: '/registro', icon: FileText, label: 'Registro auditoría' },
     { href: '/torre-control', icon: BarChart2, label: 'Torre de Control' },
+    // --- NUEVO ENLACE AL DASHBOARD DIRECTIVO ---
+    { href: '/dashboard', icon: PieChart, label: 'Dashboard Directivo' },
     { href: '/informe', icon: FileBarChart, label: 'Informe Auditoría' },
   ]
 
   // Si el usuario es Administrador, le sumamos el módulo de Configuración.
-  // Si no, se queda solo con los 3 básicos.
+  // Si no, se queda solo con los básicos.
   const navItems = usuarioActual.rol === 'Administrador' 
     ? [...baseNavItems, { href: '/configuracion', icon: Settings, label: 'Configuración' }]
     : baseNavItems;
