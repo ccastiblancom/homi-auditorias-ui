@@ -79,26 +79,40 @@ export default function DashboardPage() {
     return acc;
   }, {});
   
-  // SOLUCIÓN DEL ERROR: Agregamos : any[] para que TypeScript no bloquee la compilación
   const flujosData: any[] = Object.values(flujosDataRaw).sort((a: any, b: any) => b.Hallazgos - a.Hallazgos);
 
+  // --- NUEVA LÓGICA: AGRUPAR PUNTO DE CONTROL + FLUJO ---
   const puntosDataRaw = auditorias.reduce((acc: any, curr) => {
     if (curr.punto_control) {
-      if (!acc[curr.punto_control]) acc[curr.punto_control] = { nombre: curr.punto_control, Hallazgos: 0, Revisiones: 0 };
-      acc[curr.punto_control].Hallazgos += (curr.cantidad_hallazgos || 0);
-      acc[curr.punto_control].Revisiones += 1;
+      const flujoAsociado = curr.flujo || 'Sin flujo definido';
+      // Creamos una llave única combinando flujo y punto para no mezclar nombres iguales
+      const key = `${flujoAsociado}|${curr.punto_control}`;
+      
+      if (!acc[key]) {
+        acc[key] = { 
+          nombreOriginal: curr.punto_control, 
+          flujo: flujoAsociado, 
+          Hallazgos: 0, 
+          Revisiones: 0 
+        };
+      }
+      acc[key].Hallazgos += (curr.cantidad_hallazgos || 0);
+      acc[key].Revisiones += 1;
     }
     return acc;
   }, {});
   
-  // SOLUCIÓN DEL ERROR: Agregamos : any[] aquí también
   const todosLosPuntos: any[] = Object.values(puntosDataRaw).sort((a: any, b: any) => b.Hallazgos - a.Hallazgos);
   
+  // Para el gráfico Top 5: Unimos el nombre y el flujo en un solo string
   const topPuntosData = todosLosPuntos
-    .map((item: any) => ({ 
-      nombre: item.nombre.length > 35 ? item.nombre.substring(0, 35) + '...' : item.nombre, 
-      Hallazgos: item.Hallazgos 
-    }))
+    .map((item: any) => {
+      const textoCompuesto = `${item.nombreOriginal} (${item.flujo})`;
+      return { 
+        nombre: textoCompuesto.length > 45 ? textoCompuesto.substring(0, 45) + '...' : textoCompuesto, 
+        Hallazgos: item.Hallazgos 
+      }
+    })
     .slice(0, 5);
 
   const estadosDataRaw = auditorias.reduce((acc: any, curr) => {
@@ -125,19 +139,19 @@ export default function DashboardPage() {
 
     let parrafo2 = "";
     if (todosLosPuntos.length > 0 && todosLosPuntos[0].Hallazgos > 0) {
-      parrafo2 = `El foco principal de vulnerabilidad se encuentra en el punto de control: **"${todosLosPuntos[0].nombre}"**, el cual acumula la mayor cantidad de fallos de la institución. `;
+      parrafo2 = `El foco principal de vulnerabilidad se encuentra en el punto de control: **"${todosLosPuntos[0].nombreOriginal}"** perteneciente al flujo de **${todosLosPuntos[0].flujo}**, el cual acumula la mayor cantidad de fallos operativos. `;
     }
 
     let parrafo3 = "";
-    if (flujosData.length > 0 && flujosData[0].Hallazgos > 0) {
-      parrafo3 = `A nivel de estructura, el flujo core de **"${flujosData[0].nombre}"** es el área que actualmente requiere mayor intervención administrativa y auditoría concurrente.`;
+    if (flujosData.length > 0 && flujosData[0].Hallazgos > 0 && (!todosLosPuntos[0] || todosLosPuntos[0].flujo !== flujosData[0].nombre)) {
+      parrafo3 = `A nivel general, la mayor concentración de riesgos recae sobre el área de **"${flujosData[0].nombre}"**.`;
     }
 
     let recomendacion = "";
     if (efectividadGlobal >= 90) {
       recomendacion = "Recomendación: Mantener los controles actuales y enfocar esfuerzos en el cierre preventivo de hallazgos menores.";
     } else {
-      recomendacion = `Recomendación: Establecer planes de acción correctivos urgentes (Ciclo PHVA) liderados por calidad, con foco específico en capacitar al personal sobre el punto de control más crítico.`;
+      recomendacion = `Recomendación: Establecer planes de acción correctivos urgentes (Ciclo PHVA) liderados por calidad, con foco específico en el flujo de ${todosLosPuntos.length > 0 ? todosLosPuntos[0].flujo : 'mayor impacto'}.`;
     }
 
     return (
@@ -335,10 +349,11 @@ export default function DashboardPage() {
               <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center"><AlertTriangle className="mr-2 text-amber-500" size={20}/> Top 5: Puntos de Control Críticos</h3>
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
+                  {/* AMPLIAMOS EL WIDTH DEL Y-AXIS A 220 PARA QUE QUEPA EL NOMBRE DEL FLUJO */}
                   <BarChart data={topPuntosData} layout="vertical" margin={{ top: 0, right: 30, left: 10, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#e2e8f0" />
                     <XAxis type="number" tick={{fontSize: 12, fill: '#64748b'}} axisLine={false} tickLine={false} />
-                    <YAxis dataKey="nombre" type="category" width={180} tick={{fontSize: 11, fill: '#475569', fontWeight: 600}} axisLine={false} tickLine={false} />
+                    <YAxis dataKey="nombre" type="category" width={220} tick={{fontSize: 11, fill: '#475569', fontWeight: 600}} axisLine={false} tickLine={false} />
                     <Tooltip cursor={{fill: '#f1f5f9'}} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
                     <Bar dataKey="Hallazgos" fill="#f59e0b" radius={[0, 4, 4, 0]} barSize={24}>
                       {topPuntosData.map((entry, index) => (
@@ -366,12 +381,16 @@ export default function DashboardPage() {
                     return (
                       <div key={idx} className="bg-slate-50 p-4 rounded-xl border border-slate-100">
                         <div className="flex justify-between items-start mb-2">
-                          <p className={`font-bold text-sm ${esCritico ? 'text-rose-700' : 'text-slate-700'}`}>{punto.nombre}</p>
-                          <span className="text-xs font-bold text-slate-500 whitespace-nowrap ml-4">
+                          <div className="pr-4">
+                            <p className={`font-bold text-sm ${esCritico ? 'text-rose-700' : 'text-slate-700'}`}>{punto.nombreOriginal}</p>
+                            {/* AQUÍ SE MUESTRA EL FLUJO CORE JUSTO DEBAJO */}
+                            <p className="text-[11px] font-bold text-slate-400 mt-0.5 uppercase tracking-wider">{punto.flujo}</p>
+                          </div>
+                          <span className="text-xs font-bold text-slate-500 whitespace-nowrap">
                             {punto.Hallazgos} hallazgos en {punto.Revisiones} eval.
                           </span>
                         </div>
-                        <div className="w-full bg-slate-200 rounded-full h-2">
+                        <div className="w-full bg-slate-200 rounded-full h-2 mt-1">
                           <div 
                             className={`h-2 rounded-full ${esCritico ? 'bg-rose-500' : 'bg-amber-400'}`} 
                             style={{ width: `${Math.min(100, (punto.Hallazgos / (punto.Revisiones * 3)) * 100)}%` }} 
