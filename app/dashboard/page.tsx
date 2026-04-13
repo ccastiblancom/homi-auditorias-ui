@@ -78,9 +78,10 @@ export default function DashboardPage() {
     acc[flujo].Auditorias += 1;
     return acc;
   }, {});
-  const flujosData = Object.values(flujosDataRaw).sort((a: any, b: any) => b.Hallazgos - a.Hallazgos);
+  
+  // SOLUCIÓN DEL ERROR: Agregamos : any[] para que TypeScript no bloquee la compilación
+  const flujosData: any[] = Object.values(flujosDataRaw).sort((a: any, b: any) => b.Hallazgos - a.Hallazgos);
 
-  // Procesamiento para Puntos de Control (Para el Gráfico Top 5 y la Matriz Completa)
   const puntosDataRaw = auditorias.reduce((acc: any, curr) => {
     if (curr.punto_control) {
       if (!acc[curr.punto_control]) acc[curr.punto_control] = { nombre: curr.punto_control, Hallazgos: 0, Revisiones: 0 };
@@ -90,10 +91,9 @@ export default function DashboardPage() {
     return acc;
   }, {});
   
-  // Todos los puntos ordenados del peor al mejor
-  const todosLosPuntos = Object.values(puntosDataRaw).sort((a: any, b: any) => b.Hallazgos - a.Hallazgos);
+  // SOLUCIÓN DEL ERROR: Agregamos : any[] aquí también
+  const todosLosPuntos: any[] = Object.values(puntosDataRaw).sort((a: any, b: any) => b.Hallazgos - a.Hallazgos);
   
-  // Solo los Top 5 para la gráfica
   const topPuntosData = todosLosPuntos
     .map((item: any) => ({ 
       nombre: item.nombre.length > 35 ? item.nombre.substring(0, 35) + '...' : item.nombre, 
@@ -110,7 +110,7 @@ export default function DashboardPage() {
     value: estadosDataRaw[key]
   }));
 
-  // --- NUEVO: MOTOR HEURÍSTICO DE ANÁLISIS AUTOMÁTICO ---
+  // --- MOTOR HEURÍSTICO DE ANÁLISIS AUTOMÁTICO ---
   const generarAnalisisInteligente = () => {
     if (totalAuditorias === 0) return "No hay datos suficientes en el periodo y flujo seleccionados para generar un análisis directivo.";
 
@@ -351,10 +351,8 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* --- NUEVA SECCIÓN: MATRIZ PUNTO POR PUNTO & ANÁLISIS AUTOMATIZADO --- */}
+          {/* --- SECCIÓN: MATRIZ PUNTO POR PUNTO & ANÁLISIS AUTOMATIZADO --- */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            
-            {/* 1. Matriz de Puntos de Control (Detalle Completo) */}
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm lg:col-span-2">
               <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center"><ListChecks className="mr-2 text-indigo-500" size={20}/> Matriz de Cumplimiento por Punto de Control</h3>
               <p className="text-sm text-slate-500 mb-4">Listado detallado de todos los puntos evaluados. Las barras rojas indican mayor índice de fallo operativo.</p>
@@ -373,11 +371,10 @@ export default function DashboardPage() {
                             {punto.Hallazgos} hallazgos en {punto.Revisiones} eval.
                           </span>
                         </div>
-                        {/* Barra visual de proporción */}
                         <div className="w-full bg-slate-200 rounded-full h-2">
                           <div 
                             className={`h-2 rounded-full ${esCritico ? 'bg-rose-500' : 'bg-amber-400'}`} 
-                            style={{ width: `${Math.min(100, (punto.Hallazgos / (punto.Revisiones * 3)) * 100)}%` }} // Aproximación visual
+                            style={{ width: `${Math.min(100, (punto.Hallazgos / (punto.Revisiones * 3)) * 100)}%` }} 
                           ></div>
                         </div>
                       </div>
@@ -387,11 +384,8 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* 2. Conclusión Automatizada (El Motor Heurístico) */}
             <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-6 rounded-2xl border border-blue-100 shadow-sm flex flex-col relative overflow-hidden">
-              {/* Decoración de fondo */}
               <Sparkles className="absolute -top-4 -right-4 text-blue-200/50" size={100} />
-              
               <div className="relative z-10">
                 <h3 className="text-lg font-bold text-blue-900 mb-4 flex items-center">
                   <Sparkles className="mr-2 text-blue-600" size={20}/> Conclusión Automatizada
