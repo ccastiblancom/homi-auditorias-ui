@@ -15,7 +15,11 @@ const formatearFecha = (fechaISO: string) => {
 
 export default function PlanesMejoraPage() {
   const [planes, setPlanes] = useState<any[]>([]);
-  const [auditoriasDisponibles, setAuditoriasDisponibles] = useState<any[]>([]);
+  
+  // --- NUEVO ESTADO PARA HALLAZGOS ESPECÍFICOS ---
+  const [hallazgosDisponibles, setHallazgosDisponibles] = useState<any[]>([]);
+  const [hallazgosSeleccionados, setHallazgosSeleccionados] = useState<any[]>([]);
+  
   const [cargando, setCargando] = useState(true);
   const [filtroEstado, setFiltroEstado] = useState('Todos');
   const [searchTerm, setSearchTerm] = useState('');
@@ -31,7 +35,6 @@ export default function PlanesMejoraPage() {
     descripcion: '',
     fecha_cierre: '',
   });
-  const [auditoriasSeleccionadas, setAuditoriasSeleccionadas] = useState<string[]>([]);
   const [actividades, setActividades] = useState([{ id: Date.now(), desc: '', resp: '', completada: false }]);
 
   // Estado para Seguimiento
@@ -46,7 +49,7 @@ export default function PlanesMejoraPage() {
   const fetchDatos = async () => {
     setCargando(true);
     try {
-      // 1. Cargar Planes
+      // 1. Cargar Planes de Mejora
       const { data: dataPlanes, error: errorPlanes } = await supabase
         .from('planes_mejora')
         .select('*')
@@ -55,14 +58,31 @@ export default function PlanesMejoraPage() {
       if (errorPlanes) throw errorPlanes;
       if (dataPlanes) setPlanes(dataPlanes);
 
-      // 2. Cargar Códigos de Auditorías para asociarlas
-      const { data: dataAuditorias, error: errorAud } = await supabase
-        .from('auditorias')
-        .select('codigo_auditoria')
-        .order('fecha_creacion', { ascending: false });
+      // 2. NUEVO: Cargar RESPUESTAS con calificación "No Conforme" o "No Cumple"
+      // Hacemos un join con la tabla 'auditorias' para traer el código asociado
+      const { data: dataHallazgos, error: errorHallazgos } = await supabase
+        .from('auditoria_respuestas')
+        .select(`
+          id,
+          punto_control,
+          hallazgo,
+          clasificacion,
+          auditorias (codigo_auditoria)
+        `)
+        .in('clasificacion', ['No Conforme', 'No Cumple']); // Filtramos solo los errores
 
-      if (errorAud) throw errorAud;
-      if (dataAuditorias) setAuditoriasDisponibles(dataAuditorias);
+      if (errorHallazgos) throw errorHallazgos;
+      
+      if (dataHallazgos) {
+        // Formateamos la data para que sea fácil de mostrar
+        const formateados = dataHallazgos.map((h: any) => ({
+          id: h.id,
+          codigo: h.auditorias?.codigo_auditoria || 'Sin Código',
+          punto_control: h.punto_control,
+          hallazgo: h.hallazgo || 'Sin observación registrada'
+        }));
+        setHallazgosDisponibles(formateados);
+      }
 
     } catch (error) {
       console.error('Error cargando datos:', error);
@@ -92,6 +112,11 @@ export default function PlanesMejoraPage() {
       return;
     }
 
+    if (hallazgosSeleccionados.length === 0) {
+      alert("Debe asociar al menos un hallazgo/punto de control a este plan de mejora.");
+      return;
+    }
+
     setIsSaving(true);
     try {
       const codigoGenerado = `PM-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -101,7 +126,7 @@ export default function PlanesMejoraPage() {
         flujo: formPlan.flujo,
         descripcion: formPlan.descripcion,
         fecha_cierre_estimada: formPlan.fecha_cierre,
-        auditorias_asociadas: auditoriasSeleccionadas,
+        auditorias_asociadas: hallazgosSeleccionados, // <-- Ahora guarda el objeto completo (Código, Punto y Hallazgo)
         actividades: actividades,
         estado: 'Abierto',
         porcentaje_cumplimiento: 0
@@ -116,7 +141,7 @@ export default function PlanesMejoraPage() {
       fetchDatos();
     } catch (error) {
       console.error("Error al guardar:", error);
-      alert("Hubo un error al guardar el plan.");
+      alert("Hubo un error al guardar el plan. Revise la consola.");
     } finally {
       setIsSaving(false);
     }
@@ -124,7 +149,7 @@ export default function PlanesMejoraPage() {
 
   const resetFormulario = () => {
     setFormPlan({ flujo: '', descripcion: '', fecha_cierre: '' });
-    setAuditoriasSeleccionadas([]);
+    setHallazgosSeleccionados([]);
     setActividades([{ id: Date.now(), desc: '', resp: '', completada: false }]);
   };
 
@@ -136,24 +161,19 @@ export default function PlanesMejoraPage() {
   };
 
   const toggleActividad = async (idActividad: number) => {
-    // Clonamos el plan activo para modificarlo
     const planActualizado = { ...planActivo };
     
-    // Cambiamos el estado de la tarea clickeada
     planActualizado.actividades = planActualizado.actividades.map((act: any) => 
       act.id === idActividad ? { ...act, completada: !act.completada } : act
     );
 
-    // Recalculamos porcentaje
     const completadas = planActualizado.actividades.filter((a: any) => a.completada).length;
     const total = planActualizado.actividades.length;
     planActualizado.porcentaje_cumplimiento = total > 0 ? Math.round((completadas / total) * 100) : 0;
 
-    // Actualizamos el estado de la UI al instante
     setPlanActivo(planActualizado);
     setPlanes(planes.map(p => p.id === planActualizado.id ? planActualizado : p));
 
-    // Guardamos silenciosamente en Supabase
     await supabase
       .from('planes_mejora')
       .update({ 
@@ -166,7 +186,6 @@ export default function PlanesMejoraPage() {
   const guardarSeguimiento = async () => {
     setIsSaving(true);
     try {
-      // Si llega a 100%, sugerir cierre automático
       let nuevoEstado = planActivo.porcentaje_cumplimiento === 100 ? 'Cerrado' : 'En seguimiento';
       
       const { error } = await supabase
@@ -285,13 +304,31 @@ export default function PlanesMejoraPage() {
               <div className="p-5 flex-1 flex flex-col">
                 <p className="text-sm text-slate-600 line-clamp-2 mb-4 flex-1">{plan.descripcion}</p>
                 
-                <div className="flex flex-wrap gap-2 mb-5">
-                  {plan.auditorias_asociadas?.map((aud: string, i: number) => (
-                    <span key={i} className="text-[10px] font-bold px-2 py-1 bg-slate-100 text-slate-500 rounded-md border border-slate-200 flex items-center">
-                      <Hash size={10} className="mr-1"/> {aud}
-                    </span>
-                  ))}
-                </div>
+                {/* --- NUEVA VISUALIZACIÓN DE LOS HALLAZGOS ASOCIADOS --- */}
+                {plan.auditorias_asociadas && plan.auditorias_asociadas.length > 0 && (
+                  <div className="space-y-2 mb-6 bg-rose-50/50 p-4 rounded-xl border border-rose-100">
+                    <p className="text-[11px] font-bold text-rose-800 uppercase tracking-wider mb-2 flex items-center">
+                      <AlertTriangle size={14} className="mr-1.5"/> Solucionando {plan.auditorias_asociadas.length} hallazgo(s):
+                    </p>
+                    <div className="max-h-32 overflow-y-auto space-y-2 pr-2">
+                      {plan.auditorias_asociadas.map((item: any, i: number) => (
+                        typeof item === 'string' ? ( // Retrocompatibilidad por si hay planes viejos
+                          <span key={i} className="text-[10px] font-bold px-2 py-1 bg-white text-slate-500 rounded-md border border-slate-200 inline-flex items-center mr-2">
+                            <Hash size={10} className="mr-1"/> {item}
+                          </span>
+                        ) : (
+                          <div key={i} className="bg-white border border-rose-200 p-3 rounded-lg shadow-sm">
+                            <p className="text-xs font-black text-slate-800 flex items-center">
+                              <span className="text-rose-600 mr-1.5 bg-rose-100 px-1.5 py-0.5 rounded text-[10px]">{item.codigo}</span> 
+                              {item.punto_control}
+                            </p>
+                            <p className="text-[11px] text-slate-600 mt-1 italic line-clamp-2">"{item.hallazgo}"</p>
+                          </div>
+                        )
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Barra de Progreso */}
                 <div className="mt-auto">
@@ -387,33 +424,51 @@ export default function PlanesMejoraPage() {
                 </div>
               </div>
 
-              {/* Sección 2: Asociación de Auditorías */}
+              {/* --- NUEVA SECCIÓN 2: ASOCIACIÓN DE HALLAZGOS (NO CONFORMES) --- */}
               <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                <h4 className="font-bold text-slate-800 border-b pb-2 mb-4 flex items-center"><ListChecks size={18} className="mr-2 text-indigo-500"/> Asociación de Auditorías Previas</h4>
+                <h4 className="font-bold text-slate-800 border-b pb-2 mb-4 flex items-center"><AlertTriangle size={18} className="mr-2 text-rose-500"/> Asociación de Hallazgos (No Conformes)</h4>
+                
                 <div className="flex gap-3 items-center">
                   <select 
                     onChange={(e) => {
-                      if (e.target.value && !auditoriasSeleccionadas.includes(e.target.value)) {
-                        setAuditoriasSeleccionadas([...auditoriasSeleccionadas, e.target.value]);
+                      const selectedId = e.target.value;
+                      if (selectedId && !hallazgosSeleccionados.find(h => h.id == selectedId)) {
+                        const item = hallazgosDisponibles.find(h => h.id == selectedId);
+                        if (item) setHallazgosSeleccionados([...hallazgosSeleccionados, item]);
                       }
                       e.target.value = '';
                     }}
                     className="w-full px-4 py-3 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-slate-800"
                   >
-                    <option value="">Seleccione los IDs de los hallazgos a solucionar...</option>
-                    {auditoriasDisponibles.map((aud, i) => (
-                      <option key={i} value={aud.codigo_auditoria}>{aud.codigo_auditoria}</option>
+                    <option value="">Seleccione los puntos de control que fallaron...</option>
+                    {hallazgosDisponibles.map((h, i) => (
+                      <option key={i} value={h.id}>[{h.codigo}] {h.punto_control}</option>
                     ))}
                   </select>
                 </div>
-                {/* Etiquetas de las auditorías seleccionadas */}
-                {auditoriasSeleccionadas.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mt-4">
-                    {auditoriasSeleccionadas.map(id => (
-                      <span key={id} className="bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs font-bold px-3 py-1.5 rounded-lg flex items-center shadow-sm">
-                        <Hash size={14} className="mr-1"/> {id}
-                        <button onClick={() => setAuditoriasSeleccionadas(auditoriasSeleccionadas.filter(i => i !== id))} className="ml-2 text-indigo-400 hover:text-rose-500 bg-white rounded-full p-0.5"><X size={12}/></button>
-                      </span>
+                
+                {/* Tarjetas de los hallazgos seleccionados */}
+                {hallazgosSeleccionados.length > 0 && (
+                  <div className="flex flex-col gap-3 mt-5">
+                    {hallazgosSeleccionados.map(item => (
+                      <div key={item.id} className="bg-rose-50 border border-rose-200 p-4 rounded-xl flex justify-between items-start shadow-sm transition-all hover:border-rose-300">
+                        <div className="pr-4">
+                          <p className="font-black text-slate-800 text-sm flex items-center">
+                            <span className="bg-rose-600 text-white px-2 py-0.5 rounded mr-2 text-[10px] tracking-wider uppercase shadow-sm">
+                              {item.codigo}
+                            </span>
+                            {item.punto_control}
+                          </p>
+                          <p className="text-slate-600 text-sm mt-1.5 italic leading-relaxed">"{item.hallazgo}"</p>
+                        </div>
+                        <button 
+                          onClick={() => setHallazgosSeleccionados(hallazgosSeleccionados.filter(i => i.id !== item.id))} 
+                          className="text-rose-400 hover:text-white hover:bg-rose-500 bg-white border border-rose-200 rounded-full p-1.5 shadow-sm transition-colors"
+                          title="Remover hallazgo"
+                        >
+                          <X size={16}/>
+                        </button>
+                      </div>
                     ))}
                   </div>
                 )}
