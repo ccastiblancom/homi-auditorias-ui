@@ -11,7 +11,8 @@ import {
   LogOut, 
   ChevronLeft, 
   ChevronRight,
-  PieChart // <-- Añadimos el nuevo icono para el Dashboard
+  PieChart,
+  Target // <-- Añadimos el icono para Planes de Mejora
 } from 'lucide-react'
 
 export default function Sidebar() {
@@ -54,8 +55,9 @@ export default function Sidebar() {
   const baseNavItems = [
     { href: '/registro', icon: FileText, label: 'Registro auditoría' },
     { href: '/torre-control', icon: BarChart2, label: 'Torre de Control' },
-    // --- NUEVO ENLACE AL DASHBOARD DIRECTIVO ---
     { href: '/dashboard', icon: PieChart, label: 'Dashboard Directivo' },
+    // --- NUEVO ENLACE A PLANES DE MEJORA ---
+    { href: '/planes-mejora', icon: Target, label: 'Planes de Mejora' },
     { href: '/informe', icon: FileBarChart, label: 'Informe Auditoría' },
   ]
 
