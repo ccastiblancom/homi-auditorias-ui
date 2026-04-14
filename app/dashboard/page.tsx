@@ -7,15 +7,17 @@ import {
 } from 'recharts';
 import { 
   Filter, Calendar, BarChart3, AlertTriangle, CheckCircle, 
-  Activity, Loader2, TrendingUp, Target, Sparkles, ListChecks
+  Activity, Loader2, TrendingUp, Target, Sparkles, ListChecks, ClipboardCheck
 } from 'lucide-react';
 
 // Paleta de colores corporativa para los gráficos
 const COLORES = ['#1e40af', '#059669', '#e11d48', '#d97706', '#7c3aed', '#0891b2'];
-const COLORES_ESTADO = { 'Gestionado': '#10b981', 'En proceso': '#3b82f6', 'Pendiente': '#f59e0b' };
+// Nuevos colores para los planes de mejora
+const COLORES_ESTADO_PLAN = { 'Cerrado': '#10b981', 'En seguimiento': '#3b82f6', 'Abierto': '#f59e0b' };
 
 export default function DashboardPage() {
   const [auditorias, setAuditorias] = useState<any[]>([]);
+  const [planes, setPlanes] = useState<any[]>([]);
   const [cargando, setCargando] = useState(true);
 
   // Filtros
@@ -30,22 +32,26 @@ export default function DashboardPage() {
   const fetchDatos = async () => {
     setCargando(true);
     try {
-      let query = supabase.from('auditorias').select('*');
+      // 1. Cargar Auditorías
+      let queryAuditorias = supabase.from('auditorias').select('*');
+      if (flujoFiltro !== 'Todos') queryAuditorias = queryAuditorias.ilike('flujo', `%${flujoFiltro}%`);
+      if (fechaDesde) queryAuditorias = queryAuditorias.gte('fecha_creacion', `${fechaDesde}T00:00:00`);
+      if (fechaHasta) queryAuditorias = queryAuditorias.lte('fecha_creacion', `${fechaHasta}T23:59:59`);
+      
+      const { data: dataAuditorias, error: errorAud } = await queryAuditorias.order('fecha_creacion', { ascending: true });
+      if (errorAud) throw errorAud;
+      if (dataAuditorias) setAuditorias(dataAuditorias);
 
-      if (flujoFiltro !== 'Todos') {
-        query = query.ilike('flujo', `%${flujoFiltro}%`);
-      }
-      if (fechaDesde) {
-        query = query.gte('fecha_creacion', `${fechaDesde}T00:00:00`);
-      }
-      if (fechaHasta) {
-        query = query.lte('fecha_creacion', `${fechaHasta}T23:59:59`);
-      }
+      // 2. Cargar Planes de Mejora
+      let queryPlanes = supabase.from('planes_mejora').select('*');
+      if (flujoFiltro !== 'Todos') queryPlanes = queryPlanes.ilike('flujo', `%${flujoFiltro}%`);
+      if (fechaDesde) queryPlanes = queryPlanes.gte('fecha_creacion', `${fechaDesde}T00:00:00`);
+      if (fechaHasta) queryPlanes = queryPlanes.lte('fecha_creacion', `${fechaHasta}T23:59:59`);
 
-      const { data, error } = await query.order('fecha_creacion', { ascending: true });
+      const { data: dataPlanes, error: errorPlanes } = await queryPlanes;
+      if (errorPlanes) throw errorPlanes;
+      if (dataPlanes) setPlanes(dataPlanes);
 
-      if (error) throw error;
-      if (data) setAuditorias(data);
     } catch (error) {
       console.error('Error cargando datos del dashboard:', error);
     } finally {
@@ -53,7 +59,7 @@ export default function DashboardPage() {
     }
   };
 
-  // --- PROCESAMIENTO DE DATOS PARA GRÁFICOS ---
+  // --- PROCESAMIENTO DE DATOS PARA GRÁFICOS (AUDITORÍAS) ---
   const totalAuditorias = auditorias.length;
   const totalHallazgos = auditorias.reduce((sum, a) => sum + (a.cantidad_hallazgos || 0), 0);
   const auditoriasSinHallazgos = auditorias.filter(a => a.cantidad_hallazgos === 0).length;
@@ -81,20 +87,12 @@ export default function DashboardPage() {
   
   const flujosData: any[] = Object.values(flujosDataRaw).sort((a: any, b: any) => b.Hallazgos - a.Hallazgos);
 
-  // --- NUEVA LÓGICA: AGRUPAR PUNTO DE CONTROL + FLUJO ---
   const puntosDataRaw = auditorias.reduce((acc: any, curr) => {
     if (curr.punto_control) {
       const flujoAsociado = curr.flujo || 'Sin flujo definido';
-      // Creamos una llave única combinando flujo y punto para no mezclar nombres iguales
       const key = `${flujoAsociado}|${curr.punto_control}`;
-      
       if (!acc[key]) {
-        acc[key] = { 
-          nombreOriginal: curr.punto_control, 
-          flujo: flujoAsociado, 
-          Hallazgos: 0, 
-          Revisiones: 0 
-        };
+        acc[key] = { nombreOriginal: curr.punto_control, flujo: flujoAsociado, Hallazgos: 0, Revisiones: 0 };
       }
       acc[key].Hallazgos += (curr.cantidad_hallazgos || 0);
       acc[key].Revisiones += 1;
@@ -104,7 +102,6 @@ export default function DashboardPage() {
   
   const todosLosPuntos: any[] = Object.values(puntosDataRaw).sort((a: any, b: any) => b.Hallazgos - a.Hallazgos);
   
-  // Para el gráfico Top 5: Unimos el nombre y el flujo en un solo string
   const topPuntosData = todosLosPuntos
     .map((item: any) => {
       const textoCompuesto = `${item.nombreOriginal} (${item.flujo})`;
@@ -115,14 +112,33 @@ export default function DashboardPage() {
     })
     .slice(0, 5);
 
-  const estadosDataRaw = auditorias.reduce((acc: any, curr) => {
+  // --- PROCESAMIENTO DE DATOS PARA GRÁFICOS (PLANES DE MEJORA) ---
+  const totalPlanes = planes.length;
+  
+  // 1. Estados de los planes
+  const estadosPlanesRaw = planes.reduce((acc: any, curr) => {
     acc[curr.estado] = (acc[curr.estado] || 0) + 1;
     return acc;
   }, {});
-  const estadosData = Object.keys(estadosDataRaw).map(key => ({
+  const estadosPlanesData = Object.keys(estadosPlanesRaw).map(key => ({
     name: key,
-    value: estadosDataRaw[key]
+    value: estadosPlanesRaw[key]
   }));
+
+  // 2. Estados de las actividades (tareas)
+  let totalTareas = 0;
+  let tareasCompletadas = 0;
+  planes.forEach(p => {
+    if (p.actividades && Array.isArray(p.actividades)) {
+      totalTareas += p.actividades.length;
+      tareasCompletadas += p.actividades.filter((a: any) => a.completada).length;
+    }
+  });
+  const actividadesData = [
+    { name: 'Completadas', value: tareasCompletadas },
+    { name: 'Pendientes', value: totalTareas - tareasCompletadas }
+  ];
+
 
   // --- MOTOR HEURÍSTICO DE ANÁLISIS AUTOMÁTICO ---
   const generarAnalisisInteligente = () => {
@@ -154,10 +170,19 @@ export default function DashboardPage() {
       recomendacion = `Recomendación: Establecer planes de acción correctivos urgentes (Ciclo PHVA) liderados por calidad, con foco específico en el flujo de ${todosLosPuntos.length > 0 ? todosLosPuntos[0].flujo : 'mayor impacto'}.`;
     }
 
+    // --- NUEVO PÁRRAFO DE PLANES DE MEJORA ---
+    let parrafoPlanes = "";
+    if (totalPlanes > 0) {
+      parrafoPlanes = `Se evidencia gestión activa con **${totalPlanes} planes de mejora** en curso. De las **${totalTareas} actividades** propuestas, se han ejecutado **${tareasCompletadas}**, impulsando el cierre del ciclo de calidad.`;
+    } else if (totalHallazgos > 0) {
+      parrafoPlanes = `⚠️ **Atención:** A pesar de tener ${totalHallazgos} hallazgos, no se han registrado nuevos Planes de Mejora en este periodo para mitigarlos.`;
+    }
+
     return (
       <div className="space-y-3 text-sm md:text-base leading-relaxed text-blue-900">
         <p>{parrafo1.split('**').map((text, i) => i % 2 === 1 ? <strong key={i}>{text}</strong> : text)}</p>
         {(parrafo2 || parrafo3) && <p>{parrafo2} {parrafo3}</p>}
+        {parrafoPlanes && <p>{parrafoPlanes.split('**').map((text, i) => i % 2 === 1 ? <strong key={i}>{text}</strong> : text)}</p>}
         <div className="mt-4 p-3 bg-white/50 rounded-lg border border-blue-200/50">
           <strong>{recomendacion}</strong>
         </div>
@@ -317,37 +342,56 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* --- GRÁFICOS FILA 2 --- */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* --- GRÁFICOS FILA 2: NUEVA SECCIÓN DE PLANES DE MEJORA Y TOP 5 --- */}
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            
+            {/* Gráfico A: Estado de Planes (Reemplaza a Estado de Hallazgos) */}
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-              <h3 className="text-lg font-bold text-slate-800 mb-2 text-center">Estado de Hallazgos</h3>
-              <div className="h-64 mt-4">
+              <h3 className="text-sm font-bold text-slate-800 mb-2 text-center flex items-center justify-center">
+                <Target className="mr-2 text-indigo-500" size={16}/> Estado Planes
+              </h3>
+              <div className="h-56 mt-4">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
-                      data={estadosData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={60}
-                      outerRadius={80}
-                      paddingAngle={5}
-                      dataKey="value"
-                      stroke="none"
+                      data={estadosPlanesData} cx="50%" cy="50%" innerRadius={50} outerRadius={70} paddingAngle={5} dataKey="value" stroke="none"
                     >
-                      {estadosData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORES_ESTADO[entry.name as keyof typeof COLORES_ESTADO] || COLORES[index % COLORES.length]} />
+                      {estadosPlanesData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORES_ESTADO_PLAN[entry.name as keyof typeof COLORES_ESTADO_PLAN] || COLORES[index % COLORES.length]} />
                       ))}
                     </Pie>
                     <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                    <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{ fontSize: '13px' }}/>
+                    <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{ fontSize: '12px' }}/>
                   </PieChart>
                 </ResponsiveContainer>
               </div>
             </div>
 
+            {/* Gráfico B: Avance de Actividades (NUEVO) */}
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+              <h3 className="text-sm font-bold text-slate-800 mb-2 text-center flex items-center justify-center">
+                <ClipboardCheck className="mr-2 text-emerald-500" size={16}/> Avance Tareas
+              </h3>
+              <div className="h-56 mt-4">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={actividadesData} cx="50%" cy="50%" innerRadius={50} outerRadius={70} paddingAngle={5} dataKey="value" stroke="none"
+                    >
+                      <Cell fill="#10b981" /> {/* Completadas */}
+                      <Cell fill="#e2e8f0" /> {/* Pendientes */}
+                    </Pie>
+                    <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                    <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{ fontSize: '12px' }}/>
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* Top 5 (Ocupa las otras 2 columnas de esta fila) */}
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm lg:col-span-2">
               <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center"><AlertTriangle className="mr-2 text-amber-500" size={20}/> Top 5: Puntos de Control Críticos</h3>
-              <div className="h-64">
+              <div className="h-56">
                 <ResponsiveContainer width="100%" height="100%">
                   {/* AMPLIAMOS EL WIDTH DEL Y-AXIS A 220 PARA QUE QUEPA EL NOMBRE DEL FLUJO */}
                   <BarChart data={topPuntosData} layout="vertical" margin={{ top: 0, right: 30, left: 10, bottom: 0 }}>

@@ -504,7 +504,7 @@ export default function InformeAuditoriaPage() {
                 <div>
                   <div className="border-b border-slate-400 w-48 mx-auto mb-2"></div>
                   <p className="font-bold text-slate-800 truncate px-4">{informe.auditor}</p>
-                  <p className="text-sm text-slate-500">Auditor Concurrente</p>
+                  <p className="text-sm text-slate-500">Auditor</p>
                 </div>
                 <div>
                   <div className="border-b border-slate-400 w-48 mx-auto mb-2"></div>
