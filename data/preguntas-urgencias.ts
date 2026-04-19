@@ -211,6 +211,46 @@ export const flujoUrgencias = {
           criterio: 'Disponibilidad del 100% de los canales de retroalimentación habilitados e informados visiblemente al público.'
         }
       ]
+    },
+    {
+      nombre: 'Punto de Control 5 - Presalidas del día siguiente',  
+      preguntas: [
+        {
+          pregunta: '¿Se encuentran marcados en el sistema INDIGO todos los pacientes identificados como candidatos a egreso para el día siguiente, asegurando la visibilidad del flujo de salida?',
+          prueba: 'Cotejo entre el listado de pacientes con proyección de salida en ronda vs. el registro efectivo de "clic de presalida" en el sistema INDIGO.',
+          criterio: 'El 100% de los pacientes candidatos a egreso deben estar marcados en el sistema antes de finalizar el turno vespertino del día anterior.'
+        },
+        {
+          pregunta: '¿Se realizó la gestión anticipada de oxígenos, ambulancias o insumos especiales con un margen de al menos 24 horas previo a la ejecución del egreso?',
+          prueba: 'Revisión de los registros de solicitud de servicios externos y coordinación logística para los pacientes con presalida marcada.',
+          criterio: 'El 100% de los requerimientos logísticos especiales deben estar gestionados y con confirmación de proveedor el día previo al egreso.'
+        },
+        {
+          pregunta: '¿Existe una conducta médica definida y documentada por el especialista tratante que elimine la ambigüedad y evite retrasos en la toma de decisiones matutinas?',
+          prueba: 'Auditoría de la última nota de evolución del especialista en la historia clínica para validar la definición clara del plan de egreso (egreso definitivo o condicionado).',
+          criterio: 'El 100% de los pacientes en presalida deben contar con la conducta de egreso definida y registrada por el especialista antes de la ronda del día siguiente.'
+        },
+        {
+          pregunta: '¿Se identificaron y gestionaron los exámenes o procedimientos pendientes que tienen impacto directo en la decisión de egreso del día siguiente?',
+          prueba: 'Verificación de órdenes activas de laboratorio o imágenes diagnósticas en el sistema para pacientes con clic de presalida, validando su estado de ejecución.',
+          criterio: 'El 100% de los exámenes determinantes para el egreso deben estar ejecutados o con resultado disponible antes del inicio de la jornada de salida.'
+        },
+        {
+          pregunta: '¿Se notificó formalmente al área de facturación el volumen proyectado de egresos para permitir el cierre anticipado de cuentas y la gestión de copagos?',
+          prueba: 'Verificación del reporte consolidado de presalidas enviado o compartido con la oficina de facturación y admisiones.',
+          criterio: 'El área de facturación debe conocer la proyección del 100% de los egresos antes del cierre administrativo del día previo.'
+        },
+        {
+          pregunta: '¿Cuenta el área de Trabajo Social con el censo de casos sociales priorizados que requieren gestión de albergue o transporte especial para el día siguiente?',
+          prueba: 'Revisión de la bitácora de intervenciones de Trabajo Social y validación de gestiones en pacientes vulnerables marcados como presalida.',
+          criterio: 'Los casos sociales críticos deben tener una resolución de soporte establecida al menos 24 horas antes del egreso proyectado.'
+        },
+        {
+          pregunta: '¿Se evidencia el registro de la notificación a la familia sobre la posibilidad del egreso para asegurar la preparación del cuidador y la logística de transporte?',
+          prueba: 'Verificación en las notas de enfermería o de gestión de casos del registro de la comunicación realizada a los responsables del paciente sobre el egreso probable.',
+          criterio: 'El 100% de los familiares de pacientes en presalida deben ser informados del proceso antes de las 5:00 PM del día anterior.'
+        }
+      ]
     }
   ]
 };

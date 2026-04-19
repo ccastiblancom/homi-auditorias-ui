@@ -14,8 +14,8 @@ import {
   Loader2,
   Search,
   AlertCircle,
-  Hash,
-  X // <-- Nuevo icono para borrar etiquetas
+  Calendar,
+  Layers
 } from 'lucide-react';
 
 const getBase64ImageFromUrl = async (imageUrl: string): Promise<string> => {
@@ -29,88 +29,48 @@ const getBase64ImageFromUrl = async (imageUrl: string): Promise<string> => {
   });
 };
 
-const normalizarTexto = (texto: string) => {
-  if (!texto) return '';
-  return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
-};
-
-const formatearIdVisual = (id: string) => {
-  if (!id) return '';
-  return id.charAt(0).toUpperCase() + id.slice(1).toLowerCase();
-};
-
 export default function InformeAuditoriaPage() {
+  // Filtros
   const [flujoSeleccionado, setFlujoSeleccionado] = useState('Todos');
+  const [fechaDesde, setFechaDesde] = useState('');
+  const [fechaHasta, setFechaHasta] = useState('');
   
-  // --- NUEVO: ESTADO PARA MÚLTIPLES INFORMES ---
-  const [informesSeleccionados, setInformesSeleccionados] = useState<string[]>([]);
-  
-  const [listaAuditorias, setListaAuditorias] = useState<any[]>([]);
-  // --- NUEVO: ESTADO PARA ARRAY DE INFORMES GENERADOS ---
+  // Estado para ARRAY de informes generados
   const [informesGenerados, setInformesGenerados] = useState<any[]>([]);
   const [isGenerando, setIsGenerando] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
-  useEffect(() => {
-    const fetchListaAuditorias = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('auditorias')
-          .select('codigo_auditoria, flujo')
-          .order('fecha_creacion', { ascending: false });
-
-        if (error) throw error;
-        if (data) setListaAuditorias(data);
-      } catch (error) {
-        console.error('Error cargando la lista:', error);
-      }
-    };
-    fetchListaAuditorias();
-  }, []);
-
-  // Filtramos los que coinciden con el flujo Y que NO hayan sido seleccionados aún
-  const informesDisponibles = listaAuditorias.filter(a => {
-    const flujoCoincide = flujoSeleccionado === 'Todos' ? true : 
-                          normalizarTexto(a.flujo || '').includes(normalizarTexto(flujoSeleccionado));
-    const noSeleccionado = !informesSeleccionados.includes(a.codigo_auditoria);
-    return flujoCoincide && noSeleccionado;
-  });
-
-  const agregarInforme = (id: string) => {
-    if (id && !informesSeleccionados.includes(id)) {
-      setInformesSeleccionados([...informesSeleccionados, id]);
-    }
-  };
-
-  const quitarInforme = (id: string) => {
-    setInformesSeleccionados(informesSeleccionados.filter(item => item !== id));
-    // Limpiamos la vista si borramos todos
-    if (informesSeleccionados.length === 1) setInformesGenerados([]); 
-  };
-
-  const handleGenerarInforme = async () => {
-    if (informesSeleccionados.length === 0) {
-      alert("Por favor, seleccione al menos un ID de informe.");
-      return;
-    }
-
+  // --- NUEVA LÓGICA: GENERACIÓN AUTOMÁTICA POR LOTES (FILTROS) ---
+  const handleGenerarInformesPorFiltro = async () => {
     setIsGenerando(true);
-    setInformesGenerados([]);
+    setInformesGenerados([]); // Limpiamos la vista anterior
 
     try {
-      // 1. Buscamos TODAS las auditorías seleccionadas
-      const { data: auditData, error: auditError } = await supabase
-        .from('auditorias')
-        .select('*')
-        .in('codigo_auditoria', informesSeleccionados.map(id => id.trim().toUpperCase()));
+      // 1. Construimos la consulta base para las auditorías
+      let query = supabase.from('auditorias').select('*');
 
-      if (auditError || !auditData || auditData.length === 0) {
-        alert("No se encontraron datos para las auditorías seleccionadas.");
+      if (flujoSeleccionado !== 'Todos') {
+        query = query.ilike('flujo', `%${flujoSeleccionado}%`);
+      }
+      if (fechaDesde) {
+        query = query.gte('fecha_creacion', `${fechaDesde}T00:00:00`);
+      }
+      if (fechaHasta) {
+        query = query.lte('fecha_creacion', `${fechaHasta}T23:59:59`);
+      }
+
+      // Ordenamos para que los informes salgan del más reciente al más antiguo
+      const { data: auditData, error: auditError } = await query.order('fecha_creacion', { ascending: false });
+
+      if (auditError) throw auditError;
+
+      if (!auditData || auditData.length === 0) {
+        alert("No se encontraron auditorías para los filtros y fechas seleccionadas.");
         setIsGenerando(false);
         return;
       }
 
-      // 2. Buscamos TODAS las respuestas de esas auditorías
+      // 2. Buscamos TODAS las respuestas de las auditorías encontradas en el rango
       const auditIds = auditData.map(a => a.id);
       const { data: respData, error: respError } = await supabase
         .from('auditoria_respuestas')
@@ -119,7 +79,7 @@ export default function InformeAuditoriaPage() {
 
       if (respError) throw respError;
 
-      // 3. Procesamos cada auditoría por separado
+      // 3. Procesamos cada auditoría por separado con el mismo motor que ya funcionaba perfecto
       const arrayInformesProcesados = auditData.map(auditoria => {
         const respuestasDeEstaAuditoria = (respData || []).filter(r => r.auditoria_id === auditoria.id);
         
@@ -162,17 +122,25 @@ export default function InformeAuditoriaPage() {
         };
       });
 
+      // Actualizamos la vista con todos los informes procesados
       setInformesGenerados(arrayInformesProcesados);
 
     } catch (error) {
       console.error("Error consultando la BD:", error);
-      alert("Ocurrió un error al intentar generar los informes.");
+      alert("Ocurrió un error al intentar generar los informes. Revise la consola.");
     } finally {
       setIsGenerando(false);
     }
   };
 
-  // --- MOTOR PDF MULTI-PÁGINA ---
+  const limpiarFiltros = () => {
+    setFlujoSeleccionado('Todos');
+    setFechaDesde('');
+    setFechaHasta('');
+    setInformesGenerados([]);
+  };
+
+  // --- MOTOR PDF MULTI-PÁGINA (Sin alteraciones, funciona perfecto) ---
   const handleExportPDF = async () => {
     setIsExporting(true);
 
@@ -331,8 +299,8 @@ export default function InformeAuditoriaPage() {
       <div className="max-w-7xl mx-auto mb-8">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
           <div>
-            <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">Informe de Auditoría</h2>
-            <p className="mt-1 text-lg text-slate-600 font-medium">Genere y exporte reportes individuales o por lotes.</p>
+            <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">Generador de Informes</h2>
+            <p className="mt-1 text-lg text-slate-600 font-medium">Extraiga y unifique reportes por área y fecha de auditoría.</p>
           </div>
           
           <button 
@@ -347,70 +315,67 @@ export default function InformeAuditoriaPage() {
           </button>
         </div>
 
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-wrap gap-4 items-start">
-          <div className="flex-1 min-w-[200px]">
-            <label className="block text-sm font-semibold text-slate-700 mb-2">Filtro Rápido (Flujo)</label>
-            <div className="relative">
-              <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" size={18} />
-              <select 
-                value={flujoSeleccionado}
-                onChange={(e) => {
-                  setFlujoSeleccionado(e.target.value);
-                  setInformesSeleccionados([]); 
-                  setInformesGenerados([]);
-                }}
-                className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-slate-300 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none appearance-none text-slate-900 cursor-pointer"
-              >
-                <option value="Todos">Todos los flujos</option>
-                <option value="Urgencias">Urgencias</option>
-                <option value="Hospitalización">Hospitalización</option>
-                <option value="Salas de cirugía">Salas de cirugía</option>
-                <option value="Consulta Externa">Consulta Externa</option>
-              </select>
-            </div>
-          </div>
+        {/* --- NUEVA BARRA DE FILTROS DE GENERACIÓN --- */}
+        <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex flex-wrap gap-4 items-end">
           
-          <div className="flex-[2] min-w-[250px] flex flex-col">
-            <label className="block text-sm font-semibold text-slate-700 mb-2">Seleccione ID(s) del Informe</label>
-            <div className="flex gap-3 items-center">
-              <div className="relative flex-1">
-                <Hash className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" size={18} />
-                <select 
-                  onChange={(e) => agregarInforme(e.target.value)}
-                  value="" 
-                  className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-slate-300 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none appearance-none text-slate-900 cursor-pointer" 
-                >
-                  <option value="">Agregar un informe a la lista...</option>
-                  {informesDisponibles.map((auditoria, index) => (
-                    <option key={index} value={auditoria.codigo_auditoria}>
-                      {formatearIdVisual(auditoria.codigo_auditoria)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <button 
-                onClick={handleGenerarInforme}
-                disabled={isGenerando || informesSeleccionados.length === 0}
-                className={`px-8 py-2.5 rounded-lg font-bold shadow-md transition-colors h-[46px] flex items-center shrink-0 ${informesSeleccionados.length === 0 ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700 text-white'}`}
-              >
-                {isGenerando ? <><Loader2 className="animate-spin mr-2" size={18} /> Buscando...</> : 'Visualizar Informes'}
-              </button>
-            </div>
-            
-            {/* ETIQUETAS DE SELECCIÓN MÚLTIPLE */}
-            {informesSeleccionados.length > 0 && (
-              <div className="flex flex-wrap gap-2 mt-3">
-                {informesSeleccionados.map(id => (
-                  <span key={id} className="bg-blue-50 text-blue-800 border border-blue-200 text-xs font-bold px-3 py-1.5 rounded-lg flex items-center shadow-sm">
-                    {formatearIdVisual(id)}
-                    <button onClick={() => quitarInforme(id)} className="ml-2 text-blue-400 hover:text-rose-500 transition-colors bg-white rounded-full p-0.5">
-                      <X size={12}/>
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
+          <div className="flex-1 min-w-[200px]">
+            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center">
+              <Filter size={14} className="mr-1"/> Flujo Auditado
+            </label>
+            <select 
+              value={flujoSeleccionado}
+              onChange={(e) => setFlujoSeleccionado(e.target.value)}
+              className="w-full px-4 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none text-slate-700 font-semibold cursor-pointer"
+            >
+              <option value="Todos">Todos los flujos</option>
+              <option value="Urgencias">Urgencias</option>
+              <option value="Hospitalización">Hospitalización</option>
+              <option value="Salas de cirugía">Salas de cirugía</option>
+              <option value="Consulta Externa">Consulta Externa</option>
+            </select>
           </div>
+
+          <div className="flex-1 min-w-[150px]">
+            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center">
+              <Calendar size={14} className="mr-1"/> Fecha Desde
+            </label>
+            <input 
+              type="date" 
+              value={fechaDesde}
+              onChange={(e) => setFechaDesde(e.target.value)}
+              className="w-full px-4 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none text-slate-700 cursor-pointer"
+            />
+          </div>
+
+          <div className="flex-1 min-w-[150px]">
+            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center">
+              <Calendar size={14} className="mr-1"/> Fecha Hasta
+            </label>
+            <input 
+              type="date" 
+              value={fechaHasta}
+              onChange={(e) => setFechaHasta(e.target.value)}
+              className="w-full px-4 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none text-slate-700 cursor-pointer"
+            />
+          </div>
+
+          <div className="flex gap-2">
+            <button 
+              onClick={handleGenerarInformesPorFiltro}
+              disabled={isGenerando}
+              className={`px-6 py-2.5 rounded-xl font-bold shadow-md transition-colors h-[46px] flex items-center shrink-0 ${isGenerando ? 'bg-emerald-400 cursor-not-allowed text-white' : 'bg-emerald-600 hover:bg-emerald-700 text-white'}`}
+            >
+              {isGenerando ? <><Loader2 className="animate-spin mr-2" size={18} /> Extrayendo...</> : <><Layers className="mr-2" size={18}/> Generar Lote</>}
+            </button>
+            <button 
+              onClick={limpiarFiltros}
+              className="px-4 py-2.5 rounded-xl font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors h-[46px]"
+              title="Limpiar filtros"
+            >
+              Limpiar
+            </button>
+          </div>
+
         </div>
       </div>
 
@@ -519,7 +484,7 @@ export default function InformeAuditoriaPage() {
         <div className="flex flex-col items-center justify-center p-20 bg-white rounded-2xl shadow-sm border border-slate-200 text-center">
           <FileText size={64} className="text-slate-200 mb-4" />
           <h3 className="text-2xl font-bold text-slate-700 mb-2">No hay informes visibles</h3>
-          <p className="text-slate-500 max-w-md">Seleccione uno o más IDs de la lista y presione "Visualizar Informes" para verlos y exportarlos en lote.</p>
+          <p className="text-slate-500 max-w-md">Seleccione el flujo y las fechas correspondientes y presione "Generar Lote" para extraer y visualizar los informes oficiales.</p>
         </div>
       )}
     </div>

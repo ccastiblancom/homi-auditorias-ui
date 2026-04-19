@@ -206,6 +206,36 @@ export const flujoConsulta = {
           criterio: 'El 100% de la ruta de atención ambulatoria debe estar correctamente señalizada para evitar pérdida de tiempo y desplazamientos innecesarios del usuario.' // [cite: 310]
         }
       ]
+    },
+    {
+      nombre: 'Punto de Control 8 - Laboratorio',
+      preguntas: [
+        {
+          pregunta: '¿Se cumple con el estándar de tiempo de espera desde que el paciente finaliza su admisión hasta que es llamado para la toma de muestra en laboratorios?',
+          prueba: 'Contraste entre la hora de finalización en el módulo de admisión/facturación vs. la hora de llamado en los módulos de laboratorio. Análisis del tiempo promedio de espera frente a la meta establecida.',
+          criterio: 'El tiempo de espera para el ingreso a la toma de muestra debe ser ≤ 10 minutos.'
+        },
+        {
+          pregunta: '¿Se asegura el completo registro y firma del concentimiento informado sobre el procedimiento de toma de muestra para los examenes de laboratorio?',
+          prueba: 'Revisión aleatoria de historias clínicas y formatos (físicos o digitales) de los pacientes atendidos durante el turno para validar el diligenciamiento de los documentos legales.',
+          criterio: 'El 100% de los pacientes deben contar con el consentimiento informado debidamente diligenciado y firmado antes del procedimiento.'
+        },
+        {
+          pregunta: '¿El tiempo dedicado a la toma de muestras es suficiente para garantizar la precisión del proceso sin generar retrasos?',
+          prueba: 'Evaluación del tiempo de atención en el box de laboratorio frente a la meta institucional. Análisis de variabilidad de tiempos entre los diferentes flebótomos/auxiliares.',
+          criterio: 'El tiempo de atención promedio por paciente debe mantenerse dentro del estándar institucional (ej. 5 a 8 minutos).'
+        },
+        {
+          pregunta: '¿La carga de pacientes está distribuida de manera equitativa entre los auxiliares disponibles para evitar el agotamiento del personal y asegurar la agilidad del flujo?',
+          prueba: 'Comparativa del volumen total de pacientes atendidos por cada auxiliar de laboratorio durante la jornada.',
+          criterio: 'La diferencia de carga de atención entre módulos/auxiliares no debe ser superior al 25% para mantener un flujo de trabajo balanceado.'
+        },
+        {
+          pregunta: '¿Se garantiza el registro de los laboratorios tomados validando la correcta identificación del paciente?',
+          prueba: 'Observación directa del protocolo de doble verificación de identidad (nombre completo y documento) y auditoría del correcto etiquetado de las muestras en presencia del paciente.',
+          criterio: 'Cumplimiento del 100% en los protocolos institucionales de identificación segura y trazabilidad de la muestra.'
+        }
+      ]
     }
   ]
 };
